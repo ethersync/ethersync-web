@@ -1,4 +1,4 @@
-use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::prelude::*;
 
 // TODO: remove manual mapping of js_name
 //   see https://github.com/rustwasm/wasm-bindgen/issues/1818
@@ -11,10 +11,27 @@ extern "C" {
 
 #[wasm_bindgen(start)]
 fn start() {
-    log("Hello, world!");
+    log("WASM loaded");
 }
 
-#[wasm_bindgen(js_name = "printSomething")]
-pub fn print_something() {
-    log("something…");
+#[wasm_bindgen]
+pub struct Counter {
+    value: i32,
+}
+
+#[wasm_bindgen]
+impl Counter {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self { value: 0 }
+    }
+
+    pub fn increase(&mut self) {
+        self.value += 1;
+    }
+
+    #[wasm_bindgen(js_name = getText)]
+    pub fn get_text(&self) -> String {
+        format!("count is {value}", value = self.value)
+    }
 }

@@ -1,10 +1,7 @@
 import './style.css'
 import typescriptLogo from './typescript.svg'
 import viteLogo from '/vite.svg'
-import { setupCounter } from './counter.ts'
-import { printSomething } from 'iroh-web-wasm';
-
-printSomething();
+import { Counter } from 'iroh-web-wasm';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div>
@@ -23,5 +20,11 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </p>
   </div>
 `
+const counter = new Counter();
+const button = document.querySelector<HTMLButtonElement>('#counter')!;
+button.innerText = counter.getText();
 
-setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
+button.addEventListener("click", () => {
+    counter.increase();
+    button.innerText = counter.getText();
+});
