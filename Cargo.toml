@@ -1,32 +1,5 @@
 [workspace]
 resolver = "2"
 members = [
-    "frontend",
-    "shared",
+    "wasm",
 ]
-
-[workspace.dependencies]
-dioxus = { version = "0.6.0" }
-iroh = { version = "0.35", default-features = false }
-iroh-base = { version = "0.35", default-features = false, features = ["ticket"] }
-rand = "0.8.5"
-wasm-bindgen = "=0.2.100"
-wasm-bindgen-futures = "0.4"
-
-# workspace
-shared = { path = "shared" }
-
-# https://github.com/seanmonstar/reqwest/issues/2719
-reqwest = "=0.12.18"
-
-[profile]
-
-[profile.wasm-dev]
-inherits = "dev"
-opt-level = 1
-
-[profile.server-dev]
-inherits = "dev"
-
-[profile.android-dev]
-inherits = "dev"
