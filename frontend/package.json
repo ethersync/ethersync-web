@@ -10,6 +10,11 @@
   },
   "devDependencies": {
     "typescript": "~5.8.3",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "vite-plugin-top-level-await": "^1.5.0",
+    "vite-plugin-wasm": "^3.4.1"
+  },
+  "dependencies": {
+    "iroh-web-wasm": "file:../wasm/pkg"
   }
 }
