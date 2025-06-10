@@ -1,12 +1,15 @@
 [package]
-name = "iroh-web-frontend"
+name = "iroh-web-shared"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 dioxus = { workspace = true, features = [] }
-getrandom = { version = "0.3", features = ["wasm_js"] }
-iroh-web-shared = { path = "../shared" }
+iroh = { workspace = true }
+iroh-base = { workspace = true }
+rand = { workspace = true }
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
 
 # https://github.com/seanmonstar/reqwest/issues/2719
 reqwest = { workspace = true }
@@ -14,3 +17,6 @@ reqwest = { workspace = true }
 [features]
 default = ["web"]
 web = ["dioxus/web"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
