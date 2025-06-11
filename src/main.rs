@@ -13,25 +13,27 @@ fn App() -> Element {
     rsx! {
         document::Link { rel: "icon", href: FAVICON }
         document::Link { rel: "stylesheet", href: MAIN_CSS }
-        Hero {}
+        SecretKey {}
 
     }
 }
 
 #[component]
-pub fn Hero() -> Element {
+pub fn SecretKey() -> Element {
+    let mut secret_key = use_signal(|| "".to_string());
+
     rsx! {
-        div {
-            id: "hero",
-            img { src: HEADER_SVG, id: "header" }
-            div { id: "links",
-                a { href: "https://dioxuslabs.com/learn/0.6/", "📚 Learn Dioxus" }
-                a { href: "https://dioxuslabs.com/awesome", "🚀 Awesome Dioxus" }
-                a { href: "https://github.com/dioxus-community/", "📡 Community Libraries" }
-                a { href: "https://github.com/DioxusLabs/sdk", "⚙️ Dioxus Development Kit" }
-                a { href: "https://marketplace.visualstudio.com/items?itemName=DioxusLabs.dioxus", "💫 VSCode Extension" }
-                a { href: "https://discord.gg/XgGxMSkvUM", "👋 Community Discord" }
-            }
+        input {
+            value: "{secret_key}",
+            oninput: move |event| secret_key.set(event.value()),
+            style: "margin-right: 1em; min-width: 40em;"
+        }
+        button {
+            onclick: move |_| {
+                let random_key = iroh::SecretKey::generate(rand::thread_rng());
+                secret_key.set(random_key.to_string());
+            },
+            "generate"
         }
     }
 }

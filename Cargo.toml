@@ -8,6 +8,8 @@ edition = "2021"
 
 [dependencies]
 dioxus = { version = "0.6.0", features = [] }
+iroh = "0.35"
+rand = "0.8.5"
 
 [features]
 default = ["web"]

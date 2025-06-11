@@ -10,11 +10,12 @@ tools_dir="${project_dir}/tools/"
 cd "${project_dir}" || false
 
 # gcc is default
-clang_env="CC_wasm32_unknown_unknown=clang"
+unwrapped_clang_path=$(nix build --no-link --print-out-paths nixpkgs#llvmPackages.clang-unwrapped)
+clang_env="CC_wasm32_unknown_unknown=${unwrapped_clang_path}/bin/clang"
 
 # include path to standard library is missing by default
-clang_path=$(nix build --no-link --print-out-paths nixpkgs#llvmPackages.clang)
-clang_env="${clang_env} CFLAGS_wasm32_unknown_unknown='-I${clang_path}/resource-root/include/'"
+wrapped_clang_path=$(nix build --no-link --print-out-paths nixpkgs#llvmPackages.clang)
+clang_env="${clang_env} CFLAGS_wasm32_unknown_unknown='-I${wrapped_clang_path}/resource-root/include/'"
 
 # https://docs.rs/getrandom/0.3.3/getrandom/#webassembly-support
 getrandom_env="RUSTFLAGS='--cfg getrandom_backend=\"wasm_js\"'"
