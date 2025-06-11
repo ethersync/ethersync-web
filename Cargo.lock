@@ -3185,6 +3185,7 @@ name = "iroh-web"
 version = "0.1.0"
 dependencies = [
  "dioxus",
+ "futures",
  "iroh",
  "rand 0.8.5",
 ]
