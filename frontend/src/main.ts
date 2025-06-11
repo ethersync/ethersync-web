@@ -2,9 +2,10 @@ import './style.css'
 import typescriptLogo from './typescript.svg'
 import viteLogo from '/vite.svg'
 import { setupCounter } from './counter.ts'
-import { greet } from "iroh-web-wasm";
+import { IrohNode } from "iroh-web-wasm";
 
-greet();
+const node = await IrohNode.connect();
+alert(node.node_id());
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div>
