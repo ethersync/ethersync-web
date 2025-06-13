@@ -4,6 +4,7 @@
 
 # HTML title tag content
 title = "iroh-web"
+base_path = "/tmp/iroh-web/"
 
 # include `assets` in web platform
 [web.resource]

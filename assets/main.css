@@ -1,0 +1,6 @@
+p {
+    border: 1px solid black;
+    border-radius: 4px;
+    padding: 4px;
+    width: fit-content;
+}
