@@ -10,3 +10,11 @@ section {
 section h2 {
     margin-top: 0;
 }
+
+section fieldset {
+    border: 0;
+    display: flex;
+    gap: 1em;
+    margin-bottom: 8px;
+    padding: 0;
+}

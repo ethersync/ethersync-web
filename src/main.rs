@@ -2,12 +2,16 @@ use async_std::task::sleep;
 use dioxus::logger::tracing;
 use dioxus::prelude::*;
 use futures::StreamExt;
+use std::cell::RefCell;
 use std::str::FromStr;
 
 mod shared;
 use shared::chat_node::ChatNode;
 
 mod ui;
+use crate::shared::chat_node::ChatNodeConnection;
+use ui::connection_form::ConnectionForm;
+use ui::connection_view::ConnectionView;
 use ui::node_view::NodeView;
 
 const ALPN: &[u8] = b"/iroh-web/0";
@@ -33,19 +37,20 @@ fn App() -> Element {
 
 #[component]
 pub fn Chat() -> Element {
-    let mut node = use_signal(|| None);
+    let mut node = use_resource(|| async { ChatNode::spawn().await });
 
-    let spawn_node = move || async move {
-        node.set(Some(ChatNode::spawn().await));
+    let mut connection = use_signal(|| None);
+
+    let connect_to_peer = move |peer_node_id: String| async move {
+        (&*node.read()).as_ref().expect("Node is not spawned");
+        if let Some(node_ref) = &*node.read() {
+            let new_connection = node_ref.connect(peer_node_id).await;
+            connection.set(Some(new_connection));
+        }
     };
 
-    use_future(move || async move {
-        spawn_node().await
-    });
-
-    let mut peer_node_id = use_signal(|| "".to_string());
     let mut message_text = use_signal(|| "".to_string());
-    let mut messages = use_signal(|| Vec::new());
+    let mut messages: Signal<Vec<String>> = use_signal(|| Vec::new());
 
     use_future(move || async move {
         let mut hash_value = document::eval("return location.hash")
@@ -55,45 +60,54 @@ pub fn Chat() -> Element {
             .unwrap()
             .trim_start_matches("#")
             .to_string();
+
         if !hash_value.is_empty() {
-            peer_node_id.set(hash_value)
+            connect_to_peer(hash_value).await;
         }
     });
 
     use_future(move || async move {
-        if (&*node.read()).is_none() {
-            tracing::info!("node is none");
-            return
-        }
-
-        tracing::info!("node is some")
-    });
-
-    let chat_client = use_coroutine(move |mut rx: UnboundedReceiver<String>| async move {
+        // TODO: can this loop be prevented?
         while (&*node.read()).is_none() {
             sleep(std::time::Duration::from_millis(100)).await;
         }
 
         if let Some(node_ref) = &*node.read() {
-            let endpoint = &node_ref.endpoint;
-            while let Some(incoming) = endpoint.accept().await {
-                let connection = incoming.await.expect("Failed to connect!");
-                let (mut send, mut receive) =
-                    connection.accept_bi().await.expect("Failed to accept!");
-                send.write_all("unused".as_bytes())
+            let new_connection = node_ref.accept().await;
+            connection.set(new_connection);
+        }
+    });
+
+    use_future(move || async move {
+        // TODO: can this loop be prevented?
+        while (&*connection.read()).is_none() {
+            sleep(std::time::Duration::from_millis(100)).await;
+        }
+
+        if let Some(connection_ref) = &*connection.read() {
+            loop {
+                let mut message_len_buf = [0; 4];
+                connection_ref
+                    .receive
+                    .borrow_mut()
+                    .read_exact(&mut message_len_buf)
                     .await
-                    .expect("Failed to send!");
-                send.finish().expect("Failed to finish!");
-                let received_bytes = receive.read_to_end(1000).await.expect("Failed to read!");
-                let message = str::from_utf8(&received_bytes).expect("Failed to parse message!");
-                let from_node_id = connection
+                    .expect("Failed to read!");
+                let message_len = u32::from_be_bytes(message_len_buf);
+
+                let mut message_buf = vec![0; message_len as usize];
+                connection_ref
+                    .receive
+                    .borrow_mut()
+                    .read_exact(&mut message_buf)
+                    .await
+                    .expect("Failed to read!");
+                let message = str::from_utf8(&message_buf).expect("Failed to parse message!");
+
+                let from_node_id = connection_ref
                     .remote_node_id()
                     .expect("Missing remote node ID!");
                 messages.push(format!("{message} from {from_node_id}"));
-
-                if (&*peer_node_id.read()).is_empty() {
-                    peer_node_id.set(from_node_id.to_string());
-                }
             }
         }
     });
@@ -105,23 +119,19 @@ pub fn Chat() -> Element {
             Some(n) => rsx! {
                 NodeView {
                     node_id: n.node_id().to_string(),
-                    rotate_secret_key: spawn_node,
                     secret_key: n.secret_key.to_string()
                 }
 
-                section {
-                    style: "display: flex; gap: 1em;",
-
-                    label {
-                        for: "peer_node_id",
-                        "peer node id:"
-                    }
-
-                    input {
-                        id: "peer_node_id",
-                        value: "{peer_node_id}",
-                        oninput: move |event| peer_node_id.set(event.value().clone()),
-                        style: "min-width: 40em;"
+                match &*connection.read() {
+                    Some(c) =>  rsx! {
+                        ConnectionView {
+                            remote_node_id: c.remote_node_id().map(|n| n.to_string())
+                        }
+                    },
+                    None => rsx! {
+                        ConnectionForm {
+                            connect_to_peer: connect_to_peer,
+                        }
                     }
                 }
 
@@ -141,17 +151,16 @@ pub fn Chat() -> Element {
                     }
 
                     button {
-                        disabled: (&*peer_node_id.read()).is_empty() || (&*message_text.read()).is_empty(),
+                        disabled: (&*message_text.read()).is_empty(),
                         onclick: move |_| async move {
-                            let node_addr: iroh::NodeAddr = iroh::NodeId::from_str(&peer_node_id.read().clone()).expect("Invalid node id!").into();
 
-                            if let Some(node_ref) = &*node.read() {
-                                let endpoint = &node_ref.endpoint;
-                                let connection = endpoint.connect(node_addr, ALPN).await.expect("Failed to connect!");
-                                let (mut send, mut receive) = connection.open_bi().await.expect("Failed to bi!");
-                                send.write_all(message_text.read().as_bytes()).await.expect("Failed to send!");
-                                send.finish().expect("Failed to finish!");
-                                let _ = receive.read_to_end(1000).await;
+                            if let Some(connection_ref) = &*connection.read() {
+                                let message =( &*message_text.read()).clone();
+                                let message_bytes = message.as_bytes();
+                                let message_len = u32::try_from(message_bytes.len()).expect("Failed to convert message length!");
+                                connection_ref.send.borrow_mut().write_all(&message_len.to_be_bytes()).await.expect("Failed to send!");
+                                connection_ref.send.borrow_mut().write_all(message_bytes).await.expect("Failed to send!");
+
                                 message_text.set("".to_string());
                             }
                         },

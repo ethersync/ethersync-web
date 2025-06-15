@@ -1,11 +1,12 @@
-use std::future::Future;
+#![feature(fn_traits)]
+
 use dioxus::prelude::*;
+use std::future::Future;
 
 #[derive(PartialEq, Props, Clone)]
 pub struct NodeViewProps {
     node_id: Option<String>,
-    rotate_secret_key: Callback,
-    secret_key: String
+    secret_key: String,
 }
 
 #[component]
@@ -25,13 +26,6 @@ pub fn NodeView(props: NodeViewProps) -> Element {
 
                 dt { "secret key:" }
                 dd { "{props.secret_key}" }
-            }
-
-            button {
-                onclick: move |_| {
-                    props.rotate_secret_key.call(());
-                },
-                "rotate secret key"
             }
         }
     }
