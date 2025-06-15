@@ -1,6 +1,12 @@
-p {
+section {
     border: 1px solid black;
-    border-radius: 4px;
-    padding: 4px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    min-width: 50em;
+    padding: 8px;
     width: fit-content;
+}
+
+section h2 {
+    margin-top: 0;
 }
