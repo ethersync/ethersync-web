@@ -86,27 +86,7 @@ pub fn Chat() -> Element {
 
         if let Some(connection_ref) = &*connection.read() {
             loop {
-                let mut message_len_buf = [0; 4];
-                connection_ref
-                    .receive
-                    .borrow_mut()
-                    .read_exact(&mut message_len_buf)
-                    .await
-                    .expect("Failed to read!");
-                let message_len = u32::from_be_bytes(message_len_buf);
-
-                let mut message_buf = vec![0; message_len as usize];
-                connection_ref
-                    .receive
-                    .borrow_mut()
-                    .read_exact(&mut message_buf)
-                    .await
-                    .expect("Failed to read!");
-                let message = str::from_utf8(&message_buf).expect("Failed to parse message!");
-
-                let from_node_id = connection_ref
-                    .remote_node_id()
-                    .expect("Missing remote node ID!");
+                let (from_node_id, message) = connection_ref.receive_message().await;
                 messages.push(format!("{message} from {from_node_id}"));
             }
         }
@@ -156,11 +136,7 @@ pub fn Chat() -> Element {
 
                             if let Some(connection_ref) = &*connection.read() {
                                 let message =( &*message_text.read()).clone();
-                                let message_bytes = message.as_bytes();
-                                let message_len = u32::try_from(message_bytes.len()).expect("Failed to convert message length!");
-                                connection_ref.send.borrow_mut().write_all(&message_len.to_be_bytes()).await.expect("Failed to send!");
-                                connection_ref.send.borrow_mut().write_all(message_bytes).await.expect("Failed to send!");
-
+                                connection_ref.send_message(message).await;
                                 message_text.set("".to_string());
                             }
                         },
