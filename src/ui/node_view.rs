@@ -1,7 +1,4 @@
-#![feature(fn_traits)]
-
 use dioxus::prelude::*;
-use std::future::Future;
 
 #[derive(PartialEq, Props, Clone)]
 pub struct NodeViewProps {

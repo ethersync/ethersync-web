@@ -1,26 +1,18 @@
 use async_std::task::sleep;
-use dioxus::logger::tracing;
 use dioxus::prelude::*;
-use futures::StreamExt;
-use std::cell::RefCell;
-use std::str::FromStr;
 
 mod shared;
 use shared::chat_node::ChatNode;
 
 mod ui;
-use crate::shared::chat_node::ChatNodeConnection;
 use ui::connection_form::ConnectionForm;
 use ui::connection_view::ConnectionView;
 use ui::incoming_messages_view::IncomingMessagesView;
 use ui::new_message_form::NewMessageForm;
 use ui::node_view::NodeView;
 
-const ALPN: &[u8] = b"/iroh-web/0";
-
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
-const HEADER_SVG: Asset = asset!("/assets/header.svg");
 
 fn main() {
     dioxus::logger::initialize_default();
@@ -39,7 +31,7 @@ fn App() -> Element {
 
 #[component]
 pub fn Chat() -> Element {
-    let mut node = use_resource(|| async { ChatNode::spawn().await });
+    let node = use_resource(|| async { ChatNode::spawn().await });
 
     let mut connection = use_signal(|| None);
 
@@ -61,7 +53,7 @@ pub fn Chat() -> Element {
     let mut incoming_messages: Signal<Vec<String>> = use_signal(|| Vec::new());
 
     use_future(move || async move {
-        let mut hash_value = document::eval("return location.hash")
+        let hash_value = document::eval("return location.hash")
             .await
             .unwrap()
             .as_str()

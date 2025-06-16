@@ -1,4 +1,17 @@
+body {
+    background: silver;
+}
+
+dl dd {
+    margin-bottom: 1em;
+}
+
+dl dt {
+    margin-bottom: 0.5em;
+}
+
 section {
+    background: white;
     border: 1px solid black;
     border-radius: 8px;
     margin-bottom: 8px;

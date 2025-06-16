@@ -8,7 +8,6 @@ pub struct NewMessageFormProps {
 #[component]
 pub fn NewMessageForm(props: NewMessageFormProps) -> Element {
     let mut message_text = use_signal(|| "".to_string());
-    let mut peer_node_id = use_signal(|| "".to_string());
 
     rsx! {
         section {

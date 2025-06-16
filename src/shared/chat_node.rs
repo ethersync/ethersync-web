@@ -41,7 +41,7 @@ impl ChatNode {
             .into();
         let connection = self
             .endpoint
-            .connect(node_addr, crate::ALPN)
+            .connect(node_addr, ALPN)
             .await
             .expect("Failed to connect!");
         let (mut send, mut receive) = connection.open_bi().await.expect("Failed to bi!");
