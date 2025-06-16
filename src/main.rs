@@ -12,6 +12,7 @@ mod ui;
 use crate::shared::chat_node::ChatNodeConnection;
 use ui::connection_form::ConnectionForm;
 use ui::connection_view::ConnectionView;
+use ui::new_message_form::NewMessageForm;
 use ui::node_view::NodeView;
 
 const ALPN: &[u8] = b"/iroh-web/0";
@@ -49,7 +50,13 @@ pub fn Chat() -> Element {
         }
     };
 
-    let mut message_text = use_signal(|| "".to_string());
+    let send_message = move |new_message: String| async move{
+        (&*connection.read()).as_ref().expect("Node is not connected");
+        if let Some(connection_ref) = &*connection.read() {
+            connection_ref.send_message(new_message).await;
+        }
+    };
+
     let mut messages: Signal<Vec<String>> = use_signal(|| Vec::new());
 
     use_future(move || async move {
@@ -107,40 +114,15 @@ pub fn Chat() -> Element {
                         ConnectionView {
                             remote_node_id: c.remote_node_id().map(|n| n.to_string())
                         }
+
+                        NewMessageForm {
+                            send_message
+                        }
                     },
                     None => rsx! {
                         ConnectionForm {
                             connect_to_peer: connect_to_peer,
                         }
-                    }
-                }
-
-                section {
-                    style: "display: flex; gap: 1em;",
-
-                    label {
-                        for: "message_text",
-                        "text:"
-                    }
-
-                    input {
-                        id: "message_text",
-                        value: "{message_text}",
-                        oninput: move |event| message_text.set(event.value().clone()),
-                        style: "min-width: 40em;"
-                    }
-
-                    button {
-                        disabled: (&*message_text.read()).is_empty(),
-                        onclick: move |_| async move {
-
-                            if let Some(connection_ref) = &*connection.read() {
-                                let message =( &*message_text.read()).clone();
-                                connection_ref.send_message(message).await;
-                                message_text.set("".to_string());
-                            }
-                        },
-                        "send"
                     }
                 }
 
