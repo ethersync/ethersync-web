@@ -12,6 +12,7 @@ mod ui;
 use crate::shared::chat_node::ChatNodeConnection;
 use ui::connection_form::ConnectionForm;
 use ui::connection_view::ConnectionView;
+use ui::incoming_messages_view::IncomingMessagesView;
 use ui::new_message_form::NewMessageForm;
 use ui::node_view::NodeView;
 
@@ -57,7 +58,7 @@ pub fn Chat() -> Element {
         }
     };
 
-    let mut messages: Signal<Vec<String>> = use_signal(|| Vec::new());
+    let mut incoming_messages: Signal<Vec<String>> = use_signal(|| Vec::new());
 
     use_future(move || async move {
         let mut hash_value = document::eval("return location.hash")
@@ -94,7 +95,7 @@ pub fn Chat() -> Element {
         if let Some(connection_ref) = &*connection.read() {
             loop {
                 let (from_node_id, message) = connection_ref.receive_message().await;
-                messages.push(format!("{message} from {from_node_id}"));
+                incoming_messages.push(format!("{message} from {from_node_id}"));
             }
         }
     });
@@ -103,6 +104,9 @@ pub fn Chat() -> Element {
         h1 { "iroh Chat" }
 
         match &*node.read() {
+            None => rsx! {
+                "Spawning node…"
+            },
             Some(n) => rsx! {
                 NodeView {
                     node_id: n.node_id().to_string(),
@@ -110,6 +114,11 @@ pub fn Chat() -> Element {
                 }
 
                 match &*connection.read() {
+                    None => rsx! {
+                        ConnectionForm {
+                            connect_to_peer: connect_to_peer,
+                        }
+                    },
                     Some(c) =>  rsx! {
                         ConnectionView {
                             remote_node_id: c.remote_node_id().map(|n| n.to_string())
@@ -118,21 +127,13 @@ pub fn Chat() -> Element {
                         NewMessageForm {
                             send_message
                         }
-                    },
-                    None => rsx! {
-                        ConnectionForm {
-                            connect_to_peer: connect_to_peer,
+
+                        IncomingMessagesView {
+                            incoming_messages
                         }
                     }
                 }
-
-                ul {
-                    for text in &*messages.read() {
-                        li { "{text}" }
-                    }
-                }
-            },
-            None => rsx! {}
+            }
         }
     }
 }
