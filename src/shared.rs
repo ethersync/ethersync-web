@@ -1,1 +1,1 @@
-pub mod chat_node;
+pub mod ethersync_node;

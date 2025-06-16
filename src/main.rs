@@ -2,13 +2,12 @@ use async_std::task::sleep;
 use dioxus::prelude::*;
 
 mod shared;
-use shared::chat_node::ChatNode;
+use shared::ethersync_node::EthersyncNode;
 
 mod ui;
 use ui::connection_form::ConnectionForm;
 use ui::connection_view::ConnectionView;
 use ui::incoming_messages_view::IncomingMessagesView;
-use ui::new_message_form::NewMessageForm;
 use ui::node_view::NodeView;
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
@@ -31,27 +30,24 @@ fn App() -> Element {
 
 #[component]
 pub fn Chat() -> Element {
-    let node = use_resource(|| async { ChatNode::spawn().await });
+
+    let node = use_resource(|| async { EthersyncNode::spawn().await });
 
     let mut connection = use_signal(|| None);
 
-    let connect_to_peer = move |peer_node_id: String| async move {
+    let connect_to_peer = move |secret_address: (String, String)| async move {
         (&*node.read()).as_ref().expect("Node is not spawned");
         if let Some(node_ref) = &*node.read() {
-            let new_connection = node_ref.connect(peer_node_id).await;
+            let new_connection = node_ref.connect(secret_address).await;
             connection.set(Some(new_connection));
-        }
-    };
-
-    let send_message = move |new_message: String| async move{
-        (&*connection.read()).as_ref().expect("Node is not connected");
-        if let Some(connection_ref) = &*connection.read() {
-            connection_ref.send_message(new_message).await;
         }
     };
 
     let mut incoming_messages: Signal<Vec<String>> = use_signal(|| Vec::new());
 
+    // TODO: Ethersync uses node ID + peer passphrase and separates them with #.
+    //  therefore we should use query parameters instead of hash
+    /*
     use_future(move || async move {
         let hash_value = document::eval("return location.hash")
             .await
@@ -65,6 +61,7 @@ pub fn Chat() -> Element {
             connect_to_peer(hash_value).await;
         }
     });
+     */
 
     use_future(move || async move {
         // TODO: can this loop be prevented?
@@ -87,13 +84,14 @@ pub fn Chat() -> Element {
         if let Some(connection_ref) = &*connection.read() {
             loop {
                 let (from_node_id, message) = connection_ref.receive_message().await;
-                incoming_messages.push(format!("{message} from {from_node_id}"));
+                let message_json = serde_json::to_string(&message).expect("Converting to JSON failed!");
+                incoming_messages.push(format!("{message_json} from {from_node_id}"));
             }
         }
     });
 
     rsx! {
-        h1 { "iroh Chat" }
+        h1 { "Ethersync-Web" }
 
         match &*node.read() {
             None => rsx! {
@@ -108,16 +106,12 @@ pub fn Chat() -> Element {
                 match &*connection.read() {
                     None => rsx! {
                         ConnectionForm {
-                            connect_to_peer: connect_to_peer,
+                            connect_to_peer,
                         }
                     },
                     Some(c) =>  rsx! {
                         ConnectionView {
                             remote_node_id: c.remote_node_id().map(|n| n.to_string())
-                        }
-
-                        NewMessageForm {
-                            send_message
                         }
 
                         IncomingMessagesView {

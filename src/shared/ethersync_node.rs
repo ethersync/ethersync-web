@@ -1,13 +1,15 @@
+use automerge::sync::{Message as AutomergeSyncMessage, State as SyncState};
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::{Endpoint, NodeId, SecretKey};
 use std::cell::RefCell;
 use std::str::FromStr;
+use dioxus::logger::tracing;
 
-const ALPN: &[u8] = b"/iroh-web/0";
-const HELLO: &[u8] = b"Hello!";
+const ALPN: &[u8] = b"/ethersync/0";
 
-pub struct ChatNode {
+pub struct EthersyncNode {
     pub endpoint: Endpoint,
+    my_passphrase: SecretKey,
     pub secret_key: SecretKey,
 }
 
@@ -15,12 +17,15 @@ fn generate_random_secret_key() -> SecretKey {
     SecretKey::generate(rand::thread_rng())
 }
 
-impl ChatNode {
+impl EthersyncNode {
     pub fn node_id(&self) -> NodeId {
         self.endpoint.node_id()
     }
 
     pub async fn spawn() -> Self {
+        // TODO: store passphrase and allow changing it
+        let my_passphrase = generate_random_secret_key();
+
         let secret_key = generate_random_secret_key();
         let endpoint = Endpoint::builder()
             .secret_key(secret_key.clone())
@@ -31,37 +36,37 @@ impl ChatNode {
             .expect("Could not bind endpoint!");
         Self {
             endpoint,
+            my_passphrase,
             secret_key,
         }
     }
 
-    pub async fn connect(&self, peer_node_id: String) -> ChatNodeConnection {
-        let node_addr: iroh::NodeAddr = NodeId::from_str(&peer_node_id)
+    pub async fn connect(&self, secret_address: (String, String)) -> EthersyncNodeConnection {
+        let peer_node_id: NodeId = NodeId::from_str(&secret_address.0)
             .expect("Invalid node id!")
             .into();
+
+        let peer_passphrase: SecretKey = SecretKey::from_str(&secret_address.1)
+            .expect("Invalid passphrase!");
+
         let connection = self
             .endpoint
-            .connect(node_addr, ALPN)
+            .connect(peer_node_id, ALPN)
             .await
             .expect("Failed to connect!");
+
         let (mut send, mut receive) = connection.open_bi().await.expect("Failed to bi!");
 
-        send.write(HELLO).await.expect("Failed to send hello!");
+        send.write_all(&peer_passphrase.to_bytes()).await.expect("Failed to send peer passphrase!");
 
-        let mut buffer = vec![0; HELLO.len()];
-        receive
-            .read_exact(&mut buffer)
-            .await
-            .expect("Failed to receive hello!");
-
-        ChatNodeConnection {
+        EthersyncNodeConnection {
             connection,
             receive: RefCell::new(receive),
             send: RefCell::new(send),
         }
     }
 
-    pub async fn accept(&self) -> Option<ChatNodeConnection> {
+    pub async fn accept(&self) -> Option<EthersyncNodeConnection> {
         let incoming = self.endpoint.accept().await;
         if incoming.is_none() {
             return None;
@@ -70,15 +75,18 @@ impl ChatNode {
         let connection = incoming.unwrap().await.expect("Failed to connect!");
         let (mut send, mut receive) = connection.accept_bi().await.expect("Failed to accept!");
 
-        let mut buffer = vec![0; HELLO.len()];
-        receive
-            .read_exact(&mut buffer)
-            .await
-            .expect("Failed to receive hello!");
+        let mut received_passphrase = [0; 32];
+        receive.read_exact(&mut received_passphrase).await
+            .expect("Failed to receive passphrase!");
 
-        send.write(HELLO).await.expect("Failed to send hello!");
+        // Guard against timing attacks.
+        if !constant_time_eq::constant_time_eq(&received_passphrase, &self.my_passphrase.to_bytes())
+        {
+            tracing::warn!("Peer provided incorrect passphrase.");
+            return None;
+        }
 
-        Some(ChatNodeConnection {
+        Some(EthersyncNodeConnection {
             connection,
             receive: RefCell::new(receive),
             send: RefCell::new(send),
@@ -86,24 +94,24 @@ impl ChatNode {
     }
 }
 
-pub struct ChatNodeConnection {
+pub struct EthersyncNodeConnection {
     connection: Connection,
     receive: RefCell<RecvStream>,
     send: RefCell<SendStream>,
 }
 
-impl ChatNodeConnection {
+impl EthersyncNodeConnection {
     pub fn remote_node_id(&self) -> Option<NodeId> {
         self.connection.remote_node_id().ok()
     }
 
-    pub async fn receive_message(&self) -> (NodeId, String) {
+    pub async fn receive_message(&self) -> (NodeId, AutomergeSyncMessage) {
         let mut message_len_buf = [0; 4];
         self.receive
             .borrow_mut()
             .read_exact(&mut message_len_buf)
             .await
-            .expect("Failed to read!");
+            .expect("Failed to message length!");
         let message_len = u32::from_be_bytes(message_len_buf);
 
         let mut message_buf = vec![0; message_len as usize];
@@ -111,29 +119,13 @@ impl ChatNodeConnection {
             .borrow_mut()
             .read_exact(&mut message_buf)
             .await
-            .expect("Failed to read!");
-        let message = str::from_utf8(&message_buf)
-            .expect("Failed to parse message!")
-            .to_string();
+            .expect("Failed to message!");
+
+        let message =
+            AutomergeSyncMessage::decode(&message_buf).expect("Failed to parse automerge message!");
 
         let from_node_id = self.remote_node_id().expect("Missing remote node ID!");
 
         (from_node_id, message)
-    }
-
-    pub async fn send_message(&self, message: String) {
-        let message_bytes = message.as_bytes();
-        let message_len =
-            u32::try_from(message_bytes.len()).expect("Failed to convert message length!");
-        self.send
-            .borrow_mut()
-            .write_all(&message_len.to_be_bytes())
-            .await
-            .expect("Failed to send!");
-        self.send
-            .borrow_mut()
-            .write_all(message_bytes)
-            .await
-            .expect("Failed to send!");
     }
 }
