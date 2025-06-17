@@ -7,8 +7,10 @@ use shared::ethersync_node::EthersyncNode;
 mod ui;
 use ui::connection_form::ConnectionForm;
 use ui::connection_view::ConnectionView;
-use ui::incoming_messages_view::IncomingMessagesView;
+use ui::automerge_messages_view::AutomergeMessagesView;
 use ui::node_view::NodeView;
+use crate::shared::automerge_document::{AutomergeDocument, FormattedAutomergeMessage};
+use crate::ui::file_list::FileList;
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
@@ -30,7 +32,6 @@ fn App() -> Element {
 
 #[component]
 pub fn Chat() -> Element {
-
     let node = use_resource(|| async { EthersyncNode::spawn().await });
 
     let mut connection = use_signal(|| None);
@@ -43,7 +44,12 @@ pub fn Chat() -> Element {
         }
     };
 
-    let mut incoming_messages: Signal<Vec<String>> = use_signal(|| Vec::new());
+    let mut automerge_messages: Signal<Vec<FormattedAutomergeMessage>> = use_signal(|| Vec::new());
+
+    let mut doc = use_signal(|| {
+        AutomergeDocument::default()
+        // TODO: load content from local storage?
+    });
 
     // TODO: Ethersync uses node ID + peer passphrase and separates them with #.
     //  therefore we should use query parameters instead of hash
@@ -83,9 +89,32 @@ pub fn Chat() -> Element {
 
         if let Some(connection_ref) = &*connection.read() {
             loop {
-                let (from_node_id, message) = connection_ref.receive_message().await;
-                let message_json = serde_json::to_string(&message).expect("Converting to JSON failed!");
-                incoming_messages.push(format!("{message_json} from {from_node_id}"));
+                let (_from_node_id, message) = connection_ref.receive_message().await;
+                let formatted_message = FormattedAutomergeMessage::new(
+                    "received",
+                    &message
+                );
+                automerge_messages.push(formatted_message);
+                let new_doc = doc.read().apply_message(message).await;
+                *doc.write() = new_doc;
+            }
+        }
+    });
+
+    use_future(move || async move {
+        // TODO: can this loop be prevented?
+        while (&*connection.read()).is_none() {
+            sleep(std::time::Duration::from_millis(100)).await;
+        }
+
+        if let Some(connection_ref) = &*connection.read() {
+            while let Some(message) = doc.read().create_message().await {
+                let formatted_message = FormattedAutomergeMessage::new(
+                    "sent",
+                    &message
+                );
+                connection_ref.send_message(message).await;
+                automerge_messages.push(formatted_message);
             }
         }
     });
@@ -113,12 +142,18 @@ pub fn Chat() -> Element {
                         ConnectionView {
                             remote_node_id: c.remote_node_id().map(|n| n.to_string())
                         }
-
-                        IncomingMessagesView {
-                            incoming_messages
-                        }
                     }
                 }
+            }
+        }
+
+        FileList {
+            files: doc.read().files()
+        }
+
+        if !automerge_messages.is_empty() {
+            AutomergeMessagesView {
+                automerge_messages
             }
         }
     }

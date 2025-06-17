@@ -1,9 +1,9 @@
-use automerge::sync::{Message as AutomergeSyncMessage, State as SyncState};
+use automerge::sync::{Message as AutomergeSyncMessage};
+use dioxus::logger::tracing;
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::{Endpoint, NodeId, SecretKey};
 use std::cell::RefCell;
 use std::str::FromStr;
-use dioxus::logger::tracing;
 
 const ALPN: &[u8] = b"/ethersync/0";
 
@@ -46,8 +46,8 @@ impl EthersyncNode {
             .expect("Invalid node id!")
             .into();
 
-        let peer_passphrase: SecretKey = SecretKey::from_str(&secret_address.1)
-            .expect("Invalid passphrase!");
+        let peer_passphrase: SecretKey =
+            SecretKey::from_str(&secret_address.1).expect("Invalid passphrase!");
 
         let connection = self
             .endpoint
@@ -55,9 +55,11 @@ impl EthersyncNode {
             .await
             .expect("Failed to connect!");
 
-        let (mut send, mut receive) = connection.open_bi().await.expect("Failed to bi!");
+        let (mut send, receive) = connection.open_bi().await.expect("Failed to bi!");
 
-        send.write_all(&peer_passphrase.to_bytes()).await.expect("Failed to send peer passphrase!");
+        send.write_all(&peer_passphrase.to_bytes())
+            .await
+            .expect("Failed to send peer passphrase!");
 
         EthersyncNodeConnection {
             connection,
@@ -73,10 +75,12 @@ impl EthersyncNode {
         }
 
         let connection = incoming.unwrap().await.expect("Failed to connect!");
-        let (mut send, mut receive) = connection.accept_bi().await.expect("Failed to accept!");
+        let (send, mut receive) = connection.accept_bi().await.expect("Failed to accept!");
 
         let mut received_passphrase = [0; 32];
-        receive.read_exact(&mut received_passphrase).await
+        receive
+            .read_exact(&mut received_passphrase)
+            .await
             .expect("Failed to receive passphrase!");
 
         // Guard against timing attacks.
@@ -103,6 +107,23 @@ pub struct EthersyncNodeConnection {
 impl EthersyncNodeConnection {
     pub fn remote_node_id(&self) -> Option<NodeId> {
         self.connection.remote_node_id().ok()
+    }
+
+    pub async fn send_message(&self, message: AutomergeSyncMessage) {
+        let message_buf = message.encode();
+        let message_len =
+            u32::try_from(message_buf.len()).expect("Failed to convert message length!");
+        self.send
+            .borrow_mut()
+            .write_all(&message_len.to_be_bytes())
+            .await
+            .expect("Failed to send message length!");
+
+        self.send
+            .borrow_mut()
+            .write_all(&message_buf)
+            .await
+            .expect("Failed to send message!");
     }
 
     pub async fn receive_message(&self) -> (NodeId, AutomergeSyncMessage) {

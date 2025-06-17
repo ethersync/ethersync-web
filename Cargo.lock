@@ -3317,10 +3317,12 @@ dependencies = [
  "async-std",
  "automerge",
  "constant_time_eq",
+ "derive_more 1.0.0",
  "dioxus",
  "futures",
  "iroh",
  "rand 0.8.5",
+ "serde",
  "serde_json",
  "uuid",
 ]
