@@ -3,7 +3,6 @@ use dioxus::logger::tracing;
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::{Endpoint, NodeId, SecretKey};
 use std::cell::RefCell;
-use std::str::FromStr;
 use crate::shared::secret_address::SecretAddress;
 
 const ALPN: &[u8] = b"/ethersync/0";

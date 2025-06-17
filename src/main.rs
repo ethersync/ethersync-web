@@ -1,7 +1,5 @@
 use async_std::task::sleep;
-use dioxus::logger::tracing;
 use dioxus::prelude::*;
-use dioxus_router::prelude::*;
 
 mod shared;
 use shared::ethersync_node::EthersyncNode;
@@ -14,7 +12,7 @@ use ui::automerge_messages_view::AutomergeMessagesView;
 use ui::connection_form::ConnectionForm;
 use ui::connection_view::ConnectionView;
 use ui::node_view::NodeView;
-use crate::shared::secret_address::SecretAddress;
+use crate::shared::secret_address::{get_secret_address_from_wormhole, SecretAddress};
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
@@ -36,17 +34,14 @@ fn App() -> Element {
 
 #[derive(Routable, Clone)]
 enum Route {
-    #[route("/?:peer_node_id&:passphrase")]
+    #[route("/?:join_code")]
     EthersyncWeb {
-        peer_node_id: String,
-        passphrase: String,
+        join_code: String,
     },
 }
 
 #[component]
-pub fn EthersyncWeb(peer_node_id: String, passphrase: String) -> Element {
-    tracing::info!("query: peer_node_id={peer_node_id} passphrase={passphrase}");
-
+pub fn EthersyncWeb(join_code: String) -> Element {
     let node = use_resource(|| async { EthersyncNode::spawn().await });
 
     let mut connection = use_signal(|| None);
@@ -77,13 +72,11 @@ pub fn EthersyncWeb(peer_node_id: String, passphrase: String) -> Element {
         .unwrap_or_default();
 
     use_future(move || {
-        let secret_address = SecretAddress::from_string(peer_node_id.clone(), passphrase.clone());
+        let join_code = join_code.clone();
         async move {
-            if secret_address.is_ok() {
-                // remove query parameters to hide passphrase from address bar
-                document::eval("history.replaceState(null, null, location.pathname)");
-
-                connect_to_peer(secret_address.unwrap()).await;
+            if !join_code.clone().is_empty() {
+                let secret_address = get_secret_address_from_wormhole(&join_code).await.expect("Invalid secret address!");
+                connect_to_peer(secret_address).await;
             }
         }
     });
