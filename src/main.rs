@@ -7,12 +7,13 @@ mod shared;
 use shared::ethersync_node::EthersyncNode;
 
 mod ui;
+use crate::shared::automerge_document::{AutomergeDocument, FormattedAutomergeMessage};
+use crate::ui::file_content_view::FileContentView;
+use crate::ui::file_list::FileList;
+use ui::automerge_messages_view::AutomergeMessagesView;
 use ui::connection_form::ConnectionForm;
 use ui::connection_view::ConnectionView;
-use ui::automerge_messages_view::AutomergeMessagesView;
 use ui::node_view::NodeView;
-use crate::shared::automerge_document::{AutomergeDocument, FormattedAutomergeMessage};
-use crate::ui::file_list::FileList;
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
@@ -37,7 +38,7 @@ enum Route {
     #[route("/?:peer_node_id&:passphrase")]
     EthersyncWeb {
         peer_node_id: String,
-        passphrase: String
+        passphrase: String,
     },
 }
 
@@ -64,6 +65,15 @@ pub fn EthersyncWeb(peer_node_id: String, passphrase: String) -> Element {
         // TODO: load content from local storage?
     });
 
+    let mut selected_file_name = use_signal(|| None);
+
+    let select_file = move |file_name: String| selected_file_name.set(Some(file_name));
+
+    let selected_file_content = selected_file_name
+        .read()
+        .clone()
+        .and_then(|file_name| doc.read().file_content(file_name))
+        .unwrap_or_default();
 
     use_future(move || {
         let secret_address = (peer_node_id.clone(), passphrase.clone());
@@ -98,10 +108,7 @@ pub fn EthersyncWeb(peer_node_id: String, passphrase: String) -> Element {
         if let Some(connection_ref) = &*connection.read() {
             loop {
                 let (_from_node_id, message) = connection_ref.receive_message().await;
-                let formatted_message = FormattedAutomergeMessage::new(
-                    "received",
-                    &message
-                );
+                let formatted_message = FormattedAutomergeMessage::new("received", &message);
                 automerge_messages.push(formatted_message);
                 let new_doc = doc.read().apply_message(message).await;
                 *doc.write() = new_doc;
@@ -117,10 +124,7 @@ pub fn EthersyncWeb(peer_node_id: String, passphrase: String) -> Element {
 
         if let Some(connection_ref) = &*connection.read() {
             while let Some(message) = doc.read().create_message().await {
-                let formatted_message = FormattedAutomergeMessage::new(
-                    "sent",
-                    &message
-                );
+                let formatted_message = FormattedAutomergeMessage::new("sent", &message);
                 connection_ref.send_message(message).await;
                 automerge_messages.push(formatted_message);
             }
@@ -156,7 +160,13 @@ pub fn EthersyncWeb(peer_node_id: String, passphrase: String) -> Element {
         }
 
         FileList {
-            files: doc.read().files()
+            files: doc.read().files(),
+            select_file
+        }
+
+        FileContentView {
+            file_name: selected_file_name.read().clone().unwrap_or_default(),
+            content: selected_file_content
         }
 
         if !automerge_messages.is_empty() {

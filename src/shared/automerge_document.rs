@@ -1,5 +1,5 @@
 use automerge::sync::{Message as AutomergeSyncMessage, State as SyncState, SyncDoc};
-use automerge::{Automerge, ReadDoc};
+use automerge::{Automerge, ObjId, ReadDoc};
 use std::cell::RefCell;
 
 pub struct AutomergeDocument {
@@ -60,19 +60,27 @@ impl AutomergeDocument {
         }
     }
 
-    fn top_level_map_obj(&self, name: &str) -> Option<automerge::ObjId> {
+    fn object_id_by_name(&self, parent: ObjId, name: &str) -> Option<ObjId> {
         self.doc
             .borrow()
-            .get(automerge::ROOT, name)
+            .get(parent, name)
             .expect(&format!("{name} not found!"))
-            .map(|r| r.1)
+            .map(|entry| entry.1)
+    }
+
+    fn files_object(&self) -> Option<ObjId> {
+        self.object_id_by_name(automerge::ROOT, "files")
     }
 
     pub fn files(&self) -> Vec<String> {
-        if let Some(file_map) = self.top_level_map_obj("files") {
-            self.doc.borrow().keys(file_map).collect()
-        } else {
-            vec![]
-        }
+        self.files_object().map_or(vec![], |object_id| {
+            self.doc.borrow().keys(object_id).collect()
+        })
+    }
+
+    pub fn file_content(&self, file_name: String) -> Option<String> {
+        self.files_object()
+            .and_then(|parent_id| self.object_id_by_name(parent_id, &file_name))
+            .and_then(|file_id| self.doc.borrow().text(file_id).ok())
     }
 }
