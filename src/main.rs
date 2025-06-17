@@ -1,5 +1,7 @@
 use async_std::task::sleep;
+use dioxus::logger::tracing;
 use dioxus::prelude::*;
+use dioxus_router::prelude::*;
 
 mod shared;
 use shared::ethersync_node::EthersyncNode;
@@ -25,13 +27,24 @@ fn App() -> Element {
     rsx! {
         document::Link { rel: "icon", href: FAVICON }
         document::Link { rel: "stylesheet", href: MAIN_CSS }
-        Chat {}
 
+        Router::<Route> {}
     }
 }
 
+#[derive(Routable, Clone)]
+enum Route {
+    #[route("/?:peer_node_id&:passphrase")]
+    EthersyncWeb {
+        peer_node_id: String,
+        passphrase: String
+    },
+}
+
 #[component]
-pub fn Chat() -> Element {
+pub fn EthersyncWeb(peer_node_id: String, passphrase: String) -> Element {
+    tracing::info!("query: peer_node_id={peer_node_id} passphrase={passphrase}");
+
     let node = use_resource(|| async { EthersyncNode::spawn().await });
 
     let mut connection = use_signal(|| None);
@@ -51,23 +64,18 @@ pub fn Chat() -> Element {
         // TODO: load content from local storage?
     });
 
-    // TODO: Ethersync uses node ID + peer passphrase and separates them with #.
-    //  therefore we should use query parameters instead of hash
-    /*
-    use_future(move || async move {
-        let hash_value = document::eval("return location.hash")
-            .await
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .trim_start_matches("#")
-            .to_string();
 
-        if !hash_value.is_empty() {
-            connect_to_peer(hash_value).await;
+    use_future(move || {
+        let secret_address = (peer_node_id.clone(), passphrase.clone());
+        async move {
+            if !secret_address.0.is_empty() && !secret_address.1.is_empty() {
+                // remove query parameters to hide passphrase from address bar
+                document::eval("history.replaceState(null, null, location.pathname)");
+
+                connect_to_peer(secret_address).await;
+            }
         }
     });
-     */
 
     use_future(move || async move {
         // TODO: can this loop be prevented?
