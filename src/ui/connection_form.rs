@@ -1,9 +1,9 @@
-
+use crate::shared::secret_address::SecretAddress;
 use dioxus::prelude::*;
 
 #[derive(PartialEq, Props, Clone)]
 pub struct ConnectionFormProps {
-    connect_to_peer: Callback<(String, String)>,
+    connect_to_peer: Callback<SecretAddress>,
 }
 
 #[component]
@@ -46,7 +46,12 @@ pub fn ConnectionForm(props: ConnectionFormProps) -> Element {
 
             button {
                 onclick: move |_| {
-                    props.connect_to_peer.call((peer_node_id.read().clone(), peer_passphrase.read().clone()));
+                    props.connect_to_peer.call(
+                        SecretAddress::from_string(
+                            peer_node_id.read().clone(),
+                            peer_passphrase.read().clone()
+                        ).expect("Invalid secret address!")
+                    );
                 },
                 "connect"
             }

@@ -14,6 +14,7 @@ use ui::automerge_messages_view::AutomergeMessagesView;
 use ui::connection_form::ConnectionForm;
 use ui::connection_view::ConnectionView;
 use ui::node_view::NodeView;
+use crate::shared::secret_address::SecretAddress;
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
@@ -50,7 +51,7 @@ pub fn EthersyncWeb(peer_node_id: String, passphrase: String) -> Element {
 
     let mut connection = use_signal(|| None);
 
-    let connect_to_peer = move |secret_address: (String, String)| async move {
+    let connect_to_peer = move |secret_address: SecretAddress| async move {
         (&*node.read()).as_ref().expect("Node is not spawned");
         if let Some(node_ref) = &*node.read() {
             let new_connection = node_ref.connect(secret_address).await;
@@ -76,13 +77,13 @@ pub fn EthersyncWeb(peer_node_id: String, passphrase: String) -> Element {
         .unwrap_or_default();
 
     use_future(move || {
-        let secret_address = (peer_node_id.clone(), passphrase.clone());
+        let secret_address = SecretAddress::from_string(peer_node_id.clone(), passphrase.clone());
         async move {
-            if !secret_address.0.is_empty() && !secret_address.1.is_empty() {
+            if secret_address.is_ok() {
                 // remove query parameters to hide passphrase from address bar
                 document::eval("history.replaceState(null, null, location.pathname)");
 
-                connect_to_peer(secret_address).await;
+                connect_to_peer(secret_address.unwrap()).await;
             }
         }
     });

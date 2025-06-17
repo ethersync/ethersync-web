@@ -4,6 +4,7 @@ use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::{Endpoint, NodeId, SecretKey};
 use std::cell::RefCell;
 use std::str::FromStr;
+use crate::shared::secret_address::SecretAddress;
 
 const ALPN: &[u8] = b"/ethersync/0";
 
@@ -41,23 +42,16 @@ impl EthersyncNode {
         }
     }
 
-    pub async fn connect(&self, secret_address: (String, String)) -> EthersyncNodeConnection {
-        let peer_node_id: NodeId = NodeId::from_str(&secret_address.0)
-            .expect("Invalid node id!")
-            .into();
-
-        let peer_passphrase: SecretKey =
-            SecretKey::from_str(&secret_address.1).expect("Invalid passphrase!");
-
+    pub async fn connect(&self, secret_address: SecretAddress) -> EthersyncNodeConnection {
         let connection = self
             .endpoint
-            .connect(peer_node_id, ALPN)
+            .connect(secret_address.peer_node_id, ALPN)
             .await
             .expect("Failed to connect!");
 
         let (mut send, receive) = connection.open_bi().await.expect("Failed to bi!");
 
-        send.write_all(&peer_passphrase.to_bytes())
+        send.write_all(&secret_address.peer_passphrase.to_bytes())
             .await
             .expect("Failed to send peer passphrase!");
 
