@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 #[derive(PartialEq, Props, Clone)]
 pub struct ConnectionViewProps {
-    remote_node_id: Option<String>,
+    remote_node_id: Signal<Option<String>>,
 }
 
 #[component]
@@ -14,7 +14,7 @@ pub fn ConnectionView(props: ConnectionViewProps) -> Element {
             dl {
                 dt { "remote node ID:" }
                 dd {
-                    match props.remote_node_id {
+                    match &*props.remote_node_id.read() {
                         Some(n) => rsx! { "{n}" },
                         None => rsx! { "not connected" }
                     }

@@ -1,12 +1,14 @@
+use async_std::stream::StreamExt;
 use async_std::task::sleep;
 use dioxus::prelude::*;
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 
 mod shared;
 use shared::ethersync_node::EthersyncNode;
 
 mod ui;
 use crate::shared::automerge_document::{AutomergeDocument, FormattedAutomergeMessage};
+use crate::shared::ethersync_node::EthersyncNodeConnection;
 use crate::shared::secret_address::{get_secret_address_from_wormhole, SecretAddress};
 use crate::ui::file_content_view::FileContentView;
 use crate::ui::file_list::FileList;
@@ -42,8 +44,19 @@ enum Route {
 #[component]
 pub fn EthersyncWeb(join_code: String) -> Element {
     let node = use_resource(|| async { EthersyncNode::spawn().await });
+    let mut connection: Signal<Option<RefCell<EthersyncNodeConnection>>> = use_signal(|| None);
+    let mut remote_node_id = use_signal(|| None);
 
-    let mut connection = use_signal(|| None);
+    use_effect(move || {
+        remote_node_id.set(
+            match &*connection.read() {
+                Some(connection_ref) =>
+                    connection_ref.borrow().remote_node_id()
+                        .map( |n| n.to_string()),
+                None => None
+            }
+        );
+    });
 
     let connect_to_peer = move |secret_address: SecretAddress| async move {
         (&*node.read()).as_ref().expect("Node is not spawned");
@@ -82,48 +95,69 @@ pub fn EthersyncWeb(join_code: String) -> Element {
         }
     });
 
-    use_future(move || async move {
-        // TODO: can this loop be prevented?
-        while (&*node.read()).is_none() {
-            sleep(std::time::Duration::from_millis(100)).await;
-        }
+    let accept_connection = use_coroutine(
+        move |mut rx: UnboundedReceiver<Resource<EthersyncNode>>| async move {
+            while let Some(resource) = rx.next().await {
+                if let Some(node) = &*resource.read() {
+                    if let Some(new_connection) = node.accept().await {
+                        connection.set(Some(RefCell::new(new_connection)));
+                    }
+                }
+            }
+        },
+    );
 
-        if let Some(node_ref) = &*node.read() {
-            let new_connection = node_ref.accept().await;
-            connection.set(new_connection.map(|c| RefCell::new(c)));
+    use_effect(move || {
+        if node.read().is_none() {
+            return;
         }
+        accept_connection.send(node);
     });
 
-    use_future(move || async move {
-        // TODO: can this loop be prevented?
-        while (&*connection.read()).is_none() {
-            sleep(std::time::Duration::from_millis(100)).await;
-        }
-
-        if let Some(connection_ref) = &*connection.read() {
-            loop {
-                let (_from_node_id, message) = connection_ref.borrow_mut().receive_message().await;
-                let formatted_message = FormattedAutomergeMessage::new("received", &message);
-                automerge_messages.push(formatted_message);
-                let new_doc = doc.read().apply_message(message).await;
-                *doc.write() = new_doc;
+    let receive_messages = use_coroutine(
+        move |mut rx: UnboundedReceiver<Signal<Option<RefCell<EthersyncNodeConnection>>>>| async move {
+            while let Some(signal) = rx.next().await {
+                if let Some(connection) = &*signal.read() {
+                    loop {
+                        let (_from_node_id, message) =
+                            connection.borrow_mut().receive_message().await;
+                        let formatted_message =
+                            FormattedAutomergeMessage::new("received", &message);
+                        automerge_messages.push(formatted_message);
+                        let new_doc = doc.read().apply_message(message).await;
+                        *doc.write() = new_doc;
+                    }
+                }
             }
+        },
+    );
+
+    use_effect(move || {
+        if connection.read().is_none() {
+            return;
         }
+        receive_messages.send(connection);
     });
 
-    use_future(move || async move {
-        // TODO: can this loop be prevented?
-        while (&*connection.read()).is_none() {
-            sleep(std::time::Duration::from_millis(100)).await;
-        }
-
-        if let Some(connection_ref) = &*connection.read() {
-            while let Some(message) = doc.read().create_message().await {
-                let formatted_message = FormattedAutomergeMessage::new("sent", &message);
-                connection_ref.borrow_mut().send_message(message).await;
-                automerge_messages.push(formatted_message);
+    let send_sync_messages = use_coroutine(
+        move |mut rx: UnboundedReceiver<Signal<Option<RefCell<EthersyncNodeConnection>>>>| async move {
+            while let Some(signal) = rx.next().await {
+                if let Some(connection) = &*signal.read() {
+                    while let Some(message) = doc.read().create_message().await {
+                        let formatted_message = FormattedAutomergeMessage::new("sent", &message);
+                        connection.borrow_mut().send_message(message).await;
+                        automerge_messages.push(formatted_message);
+                    }
+                }
             }
+        },
+    );
+
+    use_effect(move || {
+        if connection.read().is_none() {
+            return;
         }
+        send_sync_messages.send(connection);
     });
 
     rsx! {
@@ -148,7 +182,7 @@ pub fn EthersyncWeb(join_code: String) -> Element {
                     },
                     Some(connection_ref) =>  rsx! {
                         ConnectionView {
-                            remote_node_id: connection_ref.borrow().remote_node_id().map(|n| n.to_string())
+                            remote_node_id
                         }
                     }
                 }
