@@ -1,18 +1,19 @@
 use async_std::task::sleep;
 use dioxus::prelude::*;
+use std::cell::RefCell;
 
 mod shared;
 use shared::ethersync_node::EthersyncNode;
 
 mod ui;
 use crate::shared::automerge_document::{AutomergeDocument, FormattedAutomergeMessage};
+use crate::shared::secret_address::{get_secret_address_from_wormhole, SecretAddress};
 use crate::ui::file_content_view::FileContentView;
 use crate::ui::file_list::FileList;
 use ui::automerge_messages_view::AutomergeMessagesView;
 use ui::connection_form::ConnectionForm;
 use ui::connection_view::ConnectionView;
 use ui::node_view::NodeView;
-use crate::shared::secret_address::{get_secret_address_from_wormhole, SecretAddress};
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
@@ -35,9 +36,7 @@ fn App() -> Element {
 #[derive(Routable, Clone)]
 enum Route {
     #[route("/?:join_code")]
-    EthersyncWeb {
-        join_code: String,
-    },
+    EthersyncWeb { join_code: String },
 }
 
 #[component]
@@ -50,7 +49,7 @@ pub fn EthersyncWeb(join_code: String) -> Element {
         (&*node.read()).as_ref().expect("Node is not spawned");
         if let Some(node_ref) = &*node.read() {
             let new_connection = node_ref.connect(secret_address).await;
-            connection.set(Some(new_connection));
+            connection.set(Some(RefCell::new(new_connection)));
         }
     };
 
@@ -75,7 +74,9 @@ pub fn EthersyncWeb(join_code: String) -> Element {
         let join_code = join_code.clone();
         async move {
             if !join_code.clone().is_empty() {
-                let secret_address = get_secret_address_from_wormhole(&join_code).await.expect("Invalid secret address!");
+                let secret_address = get_secret_address_from_wormhole(&join_code)
+                    .await
+                    .expect("Invalid secret address!");
                 connect_to_peer(secret_address).await;
             }
         }
@@ -89,7 +90,7 @@ pub fn EthersyncWeb(join_code: String) -> Element {
 
         if let Some(node_ref) = &*node.read() {
             let new_connection = node_ref.accept().await;
-            connection.set(new_connection);
+            connection.set(new_connection.map(|c| RefCell::new(c)));
         }
     });
 
@@ -101,7 +102,7 @@ pub fn EthersyncWeb(join_code: String) -> Element {
 
         if let Some(connection_ref) = &*connection.read() {
             loop {
-                let (_from_node_id, message) = connection_ref.receive_message().await;
+                let (_from_node_id, message) = connection_ref.borrow_mut().receive_message().await;
                 let formatted_message = FormattedAutomergeMessage::new("received", &message);
                 automerge_messages.push(formatted_message);
                 let new_doc = doc.read().apply_message(message).await;
@@ -119,7 +120,7 @@ pub fn EthersyncWeb(join_code: String) -> Element {
         if let Some(connection_ref) = &*connection.read() {
             while let Some(message) = doc.read().create_message().await {
                 let formatted_message = FormattedAutomergeMessage::new("sent", &message);
-                connection_ref.send_message(message).await;
+                connection_ref.borrow_mut().send_message(message).await;
                 automerge_messages.push(formatted_message);
             }
         }
@@ -145,9 +146,9 @@ pub fn EthersyncWeb(join_code: String) -> Element {
                             connect_to_peer,
                         }
                     },
-                    Some(c) =>  rsx! {
+                    Some(connection_ref) =>  rsx! {
                         ConnectionView {
-                            remote_node_id: c.remote_node_id().map(|n| n.to_string())
+                            remote_node_id: connection_ref.borrow().remote_node_id().map(|n| n.to_string())
                         }
                     }
                 }

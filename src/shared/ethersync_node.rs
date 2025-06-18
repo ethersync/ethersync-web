@@ -2,7 +2,6 @@ use automerge::sync::{Message as AutomergeSyncMessage};
 use dioxus::logger::tracing;
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::{Endpoint, NodeId, SecretKey};
-use std::cell::RefCell;
 use crate::shared::secret_address::SecretAddress;
 
 const ALPN: &[u8] = b"/ethersync/0";
@@ -56,8 +55,8 @@ impl EthersyncNode {
 
         EthersyncNodeConnection {
             connection,
-            receive: RefCell::new(receive),
-            send: RefCell::new(send),
+            receive,
+            send,
         }
     }
 
@@ -85,16 +84,16 @@ impl EthersyncNode {
 
         Some(EthersyncNodeConnection {
             connection,
-            receive: RefCell::new(receive),
-            send: RefCell::new(send),
+            receive,
+            send,
         })
     }
 }
 
 pub struct EthersyncNodeConnection {
     connection: Connection,
-    receive: RefCell<RecvStream>,
-    send: RefCell<SendStream>,
+    receive: RecvStream,
+    send: SendStream,
 }
 
 impl EthersyncNodeConnection {
@@ -102,27 +101,24 @@ impl EthersyncNodeConnection {
         self.connection.remote_node_id().ok()
     }
 
-    pub async fn send_message(&self, message: AutomergeSyncMessage) {
+    pub async fn send_message(&mut self, message: AutomergeSyncMessage) {
         let message_buf = message.encode();
         let message_len =
             u32::try_from(message_buf.len()).expect("Failed to convert message length!");
         self.send
-            .borrow_mut()
             .write_all(&message_len.to_be_bytes())
             .await
             .expect("Failed to send message length!");
 
         self.send
-            .borrow_mut()
             .write_all(&message_buf)
             .await
             .expect("Failed to send message!");
     }
 
-    pub async fn receive_message(&self) -> (NodeId, AutomergeSyncMessage) {
+    pub async fn receive_message(&mut self) -> (NodeId, AutomergeSyncMessage) {
         let mut message_len_buf = [0; 4];
         self.receive
-            .borrow_mut()
             .read_exact(&mut message_len_buf)
             .await
             .expect("Failed to message length!");
@@ -130,7 +126,6 @@ impl EthersyncNodeConnection {
 
         let mut message_buf = vec![0; message_len as usize];
         self.receive
-            .borrow_mut()
             .read_exact(&mut message_buf)
             .await
             .expect("Failed to message!");
