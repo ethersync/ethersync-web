@@ -3,6 +3,7 @@ use dioxus::prelude::*;
 #[derive(PartialEq, Props, Clone)]
 pub struct NodeViewProps {
     node_id: Option<String>,
+    my_passphrase: String,
     secret_key: String,
 }
 
@@ -13,6 +14,9 @@ pub fn NodeView(props: NodeViewProps) -> Element {
             h2 { "Node" }
 
             dl {
+                dt { "secret key:" }
+                dd { "{props.secret_key}" }
+
                 dt { "node ID:" }
                 dd {
                     match props.node_id {
@@ -21,8 +25,8 @@ pub fn NodeView(props: NodeViewProps) -> Element {
                     }
                 }
 
-                dt { "secret key:" }
-                dd { "{props.secret_key}" }
+                dt { "Ethersync passphrase:" }
+                dd { "{props.my_passphrase}" }
             }
         }
     }

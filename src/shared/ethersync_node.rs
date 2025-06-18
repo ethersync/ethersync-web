@@ -9,7 +9,7 @@ const ALPN: &[u8] = b"/ethersync/0";
 
 pub struct EthersyncNode {
     pub endpoint: Endpoint,
-    my_passphrase: SecretKey,
+    pub my_passphrase: SecretKey,
     pub secret_key: SecretKey,
 }
 

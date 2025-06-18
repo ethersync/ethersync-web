@@ -135,6 +135,7 @@ pub fn EthersyncWeb(join_code: String) -> Element {
             Some(n) => rsx! {
                 NodeView {
                     node_id: n.node_id().to_string(),
+                    my_passphrase: n.my_passphrase.to_string(),
                     secret_key: n.secret_key.to_string()
                 }
 
