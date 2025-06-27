@@ -2,7 +2,8 @@
 
 Browser-base daemon and editor for [ethersync](https://github.com/ethersync/ethersync).
 
-**⚠️ This project is in an early stage, lacks important features and may be unstable. Use with caution.**
+> [!CAUTION]
+> This project is in an early stage, lacks important features and may be unstable. There will be dragons!
 
 ## Running locally
 
