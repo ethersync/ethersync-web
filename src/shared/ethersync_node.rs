@@ -12,13 +12,24 @@ pub struct EthersyncNode {
     pub secret_key: SecretKey,
 }
 
+#[derive(PartialEq, Clone)]
+pub struct EthersyncNodeInfo {
+    pub node_id: String,
+    pub my_passphrase: String,
+    pub secret_key: String,
+}
+
 fn generate_random_secret_key() -> SecretKey {
     SecretKey::generate(rand::thread_rng())
 }
 
 impl EthersyncNode {
-    pub fn node_id(&self) -> NodeId {
-        self.endpoint.node_id()
+    pub fn node_info(&self) -> EthersyncNodeInfo {
+        EthersyncNodeInfo {
+            node_id: self.endpoint.node_id().to_string(),
+            my_passphrase: self.my_passphrase.to_string(),
+            secret_key: self.secret_key.to_string()
+        }
     }
 
     pub async fn spawn() -> Self {

@@ -1,10 +1,9 @@
 use dioxus::prelude::*;
+use crate::shared::ethersync_node::EthersyncNodeInfo;
 
 #[derive(PartialEq, Props, Clone)]
 pub struct NodeViewProps {
-    node_id: Option<String>,
-    my_passphrase: String,
-    secret_key: String,
+    node_info: EthersyncNodeInfo
 }
 
 #[component]
@@ -15,18 +14,13 @@ pub fn NodeView(props: NodeViewProps) -> Element {
 
             dl {
                 dt { "secret key:" }
-                dd { "{props.secret_key}" }
+                dd { "{props.node_info.secret_key}" }
 
                 dt { "node ID:" }
-                dd {
-                    match props.node_id {
-                        Some(n) => rsx! { "{n}" },
-                        None => rsx! { "not connected" }
-                    }
-                }
+                dd { "{props.node_info.node_id}" }
 
                 dt { "Ethersync passphrase:" }
-                dd { "{props.my_passphrase}" }
+                dd { "{props.node_info.my_passphrase}" }
             }
         }
     }

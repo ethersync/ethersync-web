@@ -4,6 +4,9 @@ use dioxus::prelude::*;
 use std::cell::{Ref, RefCell};
 
 mod shared;
+use shared::ethersync_client::EthersyncClientAction;
+use shared::ethersync_client::EthersyncClientState;
+use shared::ethersync_client::create_client;
 use shared::ethersync_node::EthersyncNode;
 
 mod ui;
@@ -16,6 +19,7 @@ use ui::automerge_messages_view::AutomergeMessagesView;
 use ui::connection_form::ConnectionForm;
 use ui::connection_view::ConnectionView;
 use ui::node_view::NodeView;
+use futures::SinkExt;
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
@@ -43,6 +47,63 @@ enum Route {
 
 #[component]
 pub fn EthersyncWeb(join_code: String) -> Element {
+    let mut client_state = use_signal(|| EthersyncClientState::Initial);
+
+    let client_action_tx = use_coroutine(move | mut client_action_rx: UnboundedReceiver<EthersyncClientAction> | async move {
+        let (mut state_rx, mut action_tx) = create_client();
+
+        spawn(async move {
+            while let Some(state) = state_rx.next().await {
+                *client_state.write() = state.expect("Invalid client state!");
+            }
+        });
+
+        while let Some(action) = client_action_rx.next().await {
+            action_tx.send(action).await;
+        }
+    });
+
+    use_effect(move || {
+        client_action_tx.send(EthersyncClientAction::SpawnNode);
+    });
+
+    let connect_to_peer = move |secret_address: SecretAddress| async move {
+        client_action_tx.send(EthersyncClientAction::Connect{ secret_address })
+    };
+
+    if 1 > 1 {}
+
+    rsx! {
+        h1 { "Ethersync-Web" }
+
+        match *client_state.read() {
+            EthersyncClientState::Initial => rsx! {
+                "Spawning node…"
+            },
+
+            EthersyncClientState::NodeSpawned { ref node_info } => rsx! {
+                NodeView {
+                    node_info: node_info.clone()
+                }
+
+                ConnectionForm {
+                    connect_to_peer,
+                }
+            },
+
+            EthersyncClientState::Connected { ref node_info, ref remote_node_id } => rsx! {
+                NodeView {
+                    node_info: node_info.clone()
+                }
+
+                ConnectionView {
+                    remote_node_id: remote_node_id.clone()
+                }
+            }
+        }
+    }
+
+    /*
     let node = use_resource(|| async { EthersyncNode::spawn().await });
     let mut connection: Signal<Option<RefCell<EthersyncNodeConnection>>> = use_signal(|| None);
     let mut remote_node_id = use_signal(|| None);
@@ -205,4 +266,5 @@ pub fn EthersyncWeb(join_code: String) -> Element {
             }
         }
     }
+     */
 }
