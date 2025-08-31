@@ -23,4 +23,4 @@ There is a helper script `start-on-nixos.sh` that can be used on NixOS for insta
 
 The same tools as above are necessary. There is a helper script `bundle-on-nixos.sh` that can be used on NixOS for installing them.
 
-The output will be in `target/dx/iroh-web/release/web/public` which can then be served as a static site.
+The output will be in `target/dx/ethersync-web/release/web/public` which can then be served as a static site.

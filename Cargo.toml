@@ -1,5 +1,5 @@
 [package]
-name = "iroh-web"
+name = "ethersync-web"
 version = "0.1.0"
 authors = ["winniehell <git@winniehell.de>"]
 edition = "2021"

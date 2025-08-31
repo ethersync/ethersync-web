@@ -3,7 +3,7 @@
 [web.app]
 
 # HTML title tag content
-title = "iroh-web"
+title = "ethersync-web"
 
 # include `assets` in web platform
 [web.resource]
