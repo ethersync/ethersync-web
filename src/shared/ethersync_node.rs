@@ -1,5 +1,11 @@
+
+use std::borrow::BorrowMut;
+use dioxus::prelude::spawn;
+use anyhow::Result;
 use automerge::sync::{Message as AutomergeSyncMessage};
 use dioxus::logger::tracing;
+use futures::channel::mpsc;
+use futures::SinkExt;
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::{Endpoint, NodeId, SecretKey};
 use crate::shared::secret_address::SecretAddress;
@@ -51,24 +57,27 @@ impl EthersyncNode {
         }
     }
 
-    pub async fn connect(&self, secret_address: SecretAddress) -> EthersyncNodeConnection {
+    pub async fn connect(&self, secret_address: SecretAddress) -> Result<EthersyncNodeConnection> {
         let connection = self
             .endpoint
             .connect(secret_address.peer_node_id, ALPN)
-            .await
-            .expect("Failed to connect!");
-
+            .await?;
         let (mut send, receive) = connection.open_bi().await.expect("Failed to bi!");
 
         send.write_all(&secret_address.peer_passphrase.to_bytes())
-            .await
-            .expect("Failed to send peer passphrase!");
+            .await?;
 
-        EthersyncNodeConnection {
+        let (mut message_tx, mut message_rx) = mpsc::channel(1);
+        spawn(async move {
+            message_tx.send("test").await.expect("test");
+        });
+
+        Ok(EthersyncNodeConnection {
             connection,
             receive,
             send,
-        }
+            message_rx
+        })
     }
 
     pub async fn accept(&self) -> Option<EthersyncNodeConnection> {
@@ -93,10 +102,16 @@ impl EthersyncNode {
             return None;
         }
 
+        let (mut message_tx, mut message_rx) = mpsc::channel(1);
+        spawn(async move {
+            message_tx.send("test").await.expect("test");
+        });
+
         Some(EthersyncNodeConnection {
             connection,
             receive,
             send,
+            message_rx
         })
     }
 }
@@ -105,6 +120,7 @@ pub struct EthersyncNodeConnection {
     connection: Connection,
     receive: RecvStream,
     send: SendStream,
+    pub message_rx: mpsc::Receiver<&'static str>,
 }
 
 impl EthersyncNodeConnection {

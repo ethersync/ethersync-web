@@ -2037,6 +2037,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "ethersync-web"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-std",
+ "automerge",
+ "constant_time_eq",
+ "derive_more 1.0.0",
+ "dioxus",
+ "futures",
+ "iroh",
+ "magic-wormhole",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "euclid"
 version = "0.22.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3482,25 +3501,6 @@ dependencies = [
  "webpki-roots 0.26.11",
  "ws_stream_wasm",
  "z32",
-]
-
-[[package]]
-name = "iroh-web"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-std",
- "automerge",
- "constant_time_eq",
- "derive_more 1.0.0",
- "dioxus",
- "futures",
- "iroh",
- "magic-wormhole",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "uuid",
 ]
 
 [[package]]

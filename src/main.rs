@@ -2,16 +2,16 @@ use async_std::stream::StreamExt;
 use async_std::task::sleep;
 use dioxus::prelude::*;
 use std::cell::{Ref, RefCell};
+use dioxus::logger::tracing::event;
 
 mod shared;
 use shared::ethersync_client::EthersyncClientAction;
-use shared::ethersync_client::EthersyncClientState;
+use shared::ethersync_client::EthersyncClientEvent;
 use shared::ethersync_client::create_client;
-use shared::ethersync_node::EthersyncNode;
 
 mod ui;
 use crate::shared::automerge_document::{AutomergeDocument, FormattedAutomergeMessage};
-use crate::shared::ethersync_node::EthersyncNodeConnection;
+use crate::shared::ethersync_node::{EthersyncNodeConnection, EthersyncNodeInfo};
 use crate::shared::secret_address::{get_secret_address_from_wormhole, SecretAddress};
 use crate::ui::file_content_view::FileContentView;
 use crate::ui::file_list::FileList;
@@ -47,19 +47,40 @@ enum Route {
 
 #[component]
 pub fn EthersyncWeb(join_code: String) -> Element {
-    let mut client_state = use_signal(|| EthersyncClientState::Initial);
+    let mut error_message_signal = use_signal(|| None);
+    let mut node_info_signal = use_signal(|| None);
+    let mut remote_node_id_signal = use_signal(|| None);
+
+    let handle_client_event = use_callback(move |client_event: EthersyncClientEvent| {
+        match client_event {
+            EthersyncClientEvent::NodeSpawned { node_info: new_node_info } => {
+                node_info_signal.set(Some(new_node_info));
+            }
+            EthersyncClientEvent::Connected { remote_node_id: new_remote_node_id } => {
+                remote_node_id_signal.set(Some(new_remote_node_id));
+            }
+        };
+    });
+
+    let handle_client_error = use_callback(move |client_error| {
+        error_message_signal.set(Some(format!("{:?}", client_error)));
+    });
 
     let client_action_tx = use_coroutine(move | mut client_action_rx: UnboundedReceiver<EthersyncClientAction> | async move {
         let (mut state_rx, mut action_tx) = create_client();
 
         spawn(async move {
-            while let Some(state) = state_rx.next().await {
-                *client_state.write() = state.expect("Invalid client state!");
+            while let Some(result) = state_rx.next().await {
+                if let Ok(client_event) = result {
+                    handle_client_event(client_event);
+                } else if let Err(client_error) = result {
+                    handle_client_error(client_error);
+                }
             }
         });
 
         while let Some(action) = client_action_rx.next().await {
-            action_tx.send(action).await;
+            action_tx.send(action).await.expect("Could not send client action!");
         }
     });
 
@@ -71,33 +92,42 @@ pub fn EthersyncWeb(join_code: String) -> Element {
         client_action_tx.send(EthersyncClientAction::Connect{ secret_address })
     };
 
-    if 1 > 1 {}
-
     rsx! {
         h1 { "Ethersync-Web" }
 
-        match *client_state.read() {
-            EthersyncClientState::Initial => rsx! {
+        match *error_message_signal.read() {
+            None => rsx! { },
+            Some(ref error_message) => rsx! {
+                p {
+                    "Error: {error_message}"
+                }
+            }
+        }
+
+        match *node_info_signal.read() {
+            None => rsx! {
                 "Spawning node…"
             },
-
-            EthersyncClientState::NodeSpawned { ref node_info } => rsx! {
-                NodeView {
-                    node_info: node_info.clone()
+            Some(ref node_info) => {
+                rsx! {
+                    NodeView {
+                        node_info: node_info.clone()
+                    }
                 }
+            }
+        }
 
+        match *remote_node_id_signal.read() {
+            None => rsx! {
                 ConnectionForm {
                     connect_to_peer,
                 }
             },
-
-            EthersyncClientState::Connected { ref node_info, ref remote_node_id } => rsx! {
-                NodeView {
-                    node_info: node_info.clone()
-                }
-
-                ConnectionView {
-                    remote_node_id: remote_node_id.clone()
+            Some(ref remote_node_id) => {
+                rsx! {
+                    ConnectionView {
+                        remote_node_id: remote_node_id.clone()
+                    }
                 }
             }
         }
