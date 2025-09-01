@@ -1,6 +1,6 @@
-use std::string::ToString;
 use crate::shared::secret_address::{get_secret_address_from_wormhole, SecretAddress};
 use dioxus::prelude::*;
+use std::string::ToString;
 
 #[derive(PartialEq, Props, Clone)]
 pub struct ConnectionFormProps {
@@ -57,7 +57,6 @@ fn AdvancedForm() -> Element {
     }
 }
 
-
 #[component]
 pub fn ConnectionForm(props: ConnectionFormProps) -> Element {
     let mut mode = use_signal(|| "simple".to_string());
@@ -70,21 +69,19 @@ pub fn ConnectionForm(props: ConnectionFormProps) -> Element {
             "simple" => {
                 let code = form_data["join_code"].as_value();
                 get_secret_address_from_wormhole(&code).await
-            },
-            "advanced" => {
-                SecretAddress::from_string(
-                    form_data["peer_node_id"].as_value(),
-                    form_data["peer_passphrase"].as_value()
-                )
-            },
+            }
+            "advanced" => SecretAddress::from_string(
+                form_data["peer_node_id"].as_value(),
+                form_data["peer_passphrase"].as_value(),
+            ),
             _ => {
                 panic!("Unexpected form mode: {mode}")
             }
         };
 
-        props.connect_to_peer.call(
-            secret_address.expect("Invalid secret address!")
-        );
+        props
+            .connect_to_peer
+            .call(secret_address.expect("Invalid secret address!"));
     };
 
     rsx! {
@@ -100,7 +97,7 @@ pub fn ConnectionForm(props: ConnectionFormProps) -> Element {
                             input {
                                 type: "radio",
                                 name: "mode",
-                                checked: &*mode.read() == value,
+                                checked: *mode.read() == value,
                                 oninput: move |_| mode.set(value.to_string()),
                                 value: value
                             },

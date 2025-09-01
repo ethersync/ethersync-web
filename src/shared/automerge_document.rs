@@ -1,6 +1,9 @@
 use automerge::sync::{Message as AutomergeSyncMessage, State as SyncState, SyncDoc};
 use automerge::{Automerge, ObjId, ReadDoc};
+use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+use futures::{SinkExt, StreamExt};
 use std::cell::RefCell;
+use tokio::sync::broadcast::Sender;
 
 pub struct AutomergeDocument {
     doc: RefCell<Automerge>,
@@ -82,5 +85,87 @@ impl AutomergeDocument {
         self.files_object()
             .and_then(|parent_id| self.object_id_by_name(parent_id, &file_name))
             .and_then(|file_id| self.doc.borrow().text(file_id).ok())
+    }
+}
+
+pub enum AutomergeDocumentAction {
+    Apply {
+        message: AutomergeSyncMessage,
+    },
+    SelectFile {
+        file_name: String,
+    },
+    Sync {
+        outgoing_message_tx: Sender<AutomergeSyncMessage>,
+    },
+}
+
+#[derive(Clone, PartialEq)]
+pub struct AutomergeDocumentFile {
+    pub file_name: String,
+    pub content: Option<String>,
+}
+
+pub enum AutomergeDocumentEvent {
+    Changed {
+        files: Vec<String>,
+        selected_file: Option<AutomergeDocumentFile>,
+    },
+}
+
+pub struct AutomergeDocumentHandler {
+    pub doc_event_tx: UnboundedSender<AutomergeDocumentEvent>,
+}
+
+impl AutomergeDocumentHandler {
+    pub async fn handle_actions(
+        &mut self,
+        mut action_rx: UnboundedReceiver<AutomergeDocumentAction>,
+    ) {
+        // TODO: load content from local storage?
+        let mut doc = AutomergeDocument::default();
+
+        let mut selected_file = None;
+
+        while let Some(action) = action_rx.next().await {
+            match action {
+                AutomergeDocumentAction::Apply { message } => {
+                    doc = doc.apply_message(message).await;
+                    self.send_change_event(&doc, &selected_file).await;
+                }
+                AutomergeDocumentAction::SelectFile { ref file_name } => {
+                    selected_file = Some(AutomergeDocumentFile {
+                        file_name: file_name.clone(),
+                        content: doc.file_content(file_name.clone()),
+                    });
+                    self.send_change_event(&doc, &selected_file).await;
+                }
+                AutomergeDocumentAction::Sync {
+                    outgoing_message_tx,
+                } => {
+                    if let Some(message) = doc.create_message().await {
+                        // TODO: proper error handling
+                        outgoing_message_tx
+                            .send(message)
+                            .expect("failed to send sync!");
+                    }
+                }
+            }
+        }
+    }
+
+    async fn send_change_event(
+        &mut self,
+        doc: &AutomergeDocument,
+        selected_file: &Option<AutomergeDocumentFile>,
+    ) {
+        // TODO: proper error handling
+        self.doc_event_tx
+            .send(AutomergeDocumentEvent::Changed {
+                files: doc.files(),
+                selected_file: selected_file.clone(),
+            })
+            .await
+            .expect("failed to send event!");
     }
 }

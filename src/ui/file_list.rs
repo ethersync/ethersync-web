@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 #[derive(PartialEq, Props, Clone)]
 pub struct FileListProps {
     files: Vec<String>,
-    select_file: Callback<String>
+    select_file: Callback<String>,
 }
 
 #[component]

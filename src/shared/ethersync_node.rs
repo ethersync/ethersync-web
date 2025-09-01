@@ -1,10 +1,18 @@
-use automerge::sync::{Message as AutomergeSyncMessage};
-use dioxus::logger::tracing;
-use iroh::endpoint::{Connection, RecvStream, SendStream};
-use iroh::{Endpoint, NodeId, SecretKey};
 use crate::shared::secret_address::SecretAddress;
+use anyhow::{anyhow, Result};
+use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+use futures::{SinkExt, StreamExt};
+use iroh::endpoint::{RecvStream, SendStream};
+use iroh::{Endpoint, SecretKey};
 
 const ALPN: &[u8] = b"/ethersync/0";
+
+#[derive(Clone, PartialEq)]
+pub struct EthersyncNodeInfo {
+    pub node_id: String,
+    pub my_passphrase: String,
+    pub secret_key: String,
+}
 
 pub struct EthersyncNode {
     pub endpoint: Endpoint,
@@ -17,8 +25,12 @@ fn generate_random_secret_key() -> SecretKey {
 }
 
 impl EthersyncNode {
-    pub fn node_id(&self) -> NodeId {
-        self.endpoint.node_id()
+    pub fn node_info(&self) -> EthersyncNodeInfo {
+        EthersyncNodeInfo {
+            node_id: self.endpoint.node_id().to_string(),
+            my_passphrase: self.my_passphrase.to_string(),
+            secret_key: self.secret_key.to_string(),
+        }
     }
 
     pub async fn spawn() -> Self {
@@ -40,101 +52,98 @@ impl EthersyncNode {
         }
     }
 
-    pub async fn connect(&self, secret_address: SecretAddress) -> EthersyncNodeConnection {
+    pub async fn connect(
+        &self,
+        secret_address: SecretAddress,
+    ) -> Result<(iroh::endpoint::Connection, RecvStream, SendStream)> {
         let connection = self
             .endpoint
             .connect(secret_address.peer_node_id, ALPN)
-            .await
-            .expect("Failed to connect!");
+            .await?;
 
-        let (mut send, receive) = connection.open_bi().await.expect("Failed to bi!");
+        let (mut send, receive) = connection.open_bi().await?;
 
         send.write_all(&secret_address.peer_passphrase.to_bytes())
-            .await
-            .expect("Failed to send peer passphrase!");
+            .await?;
 
-        EthersyncNodeConnection {
-            connection,
-            receive,
-            send,
-        }
+        Ok((connection, receive, send))
     }
 
-    pub async fn accept(&self) -> Option<EthersyncNodeConnection> {
+    pub async fn accept(&self) -> Result<(iroh::endpoint::Connection, RecvStream, SendStream)> {
         let incoming = self.endpoint.accept().await;
         if incoming.is_none() {
-            return None;
+            return Err(anyhow!("endpoint closed!"));
         }
 
-        let connection = incoming.unwrap().await.expect("Failed to connect!");
-        let (send, mut receive) = connection.accept_bi().await.expect("Failed to accept!");
+        let connection = incoming.unwrap().await?;
+        let (send, mut receive) = connection.accept_bi().await?;
 
         let mut received_passphrase = [0; 32];
-        receive
-            .read_exact(&mut received_passphrase)
-            .await
-            .expect("Failed to receive passphrase!");
+        receive.read_exact(&mut received_passphrase).await?;
 
         // Guard against timing attacks.
         if !constant_time_eq::constant_time_eq(&received_passphrase, &self.my_passphrase.to_bytes())
         {
-            tracing::warn!("Peer provided incorrect passphrase.");
-            return None;
+            return Err(anyhow!("Peer provided incorrect passphrase."));
         }
 
-        Some(EthersyncNodeConnection {
-            connection,
-            receive,
-            send,
+        Ok((connection, receive, send))
+    }
+}
+
+pub enum EthersyncNodeAction {
+    Connect { secret_address: SecretAddress },
+}
+
+pub enum EthersyncNodeEvent {
+    NewConnection {
+        connection: iroh::endpoint::Connection,
+        receive: RecvStream,
+        send: SendStream,
+    },
+    NodeSpawned {
+        node_info: EthersyncNodeInfo,
+    },
+}
+
+pub async fn create_node_handler(
+    mut action_rx: UnboundedReceiver<EthersyncNodeAction>,
+    mut event_tx: UnboundedSender<EthersyncNodeEvent>,
+) {
+    let node = EthersyncNode::spawn().await;
+
+    // TODO: find out how to do this
+    /*
+    let mut incoming_event_tx = event_tx.clone();
+    spawn(async move {
+        while let Ok((connection, receive, send)) = node.accept().await {
+            incoming_event_tx.send(EthersyncNodeEvent::NewConnection { connection, receive, send }).await.expect("failed to send event!");
+        }
+    });
+     */
+
+    event_tx
+        .send(EthersyncNodeEvent::NodeSpawned {
+            node_info: node.node_info(),
         })
-    }
-}
+        .await
+        .expect("failed to send event!");
 
-pub struct EthersyncNodeConnection {
-    connection: Connection,
-    receive: RecvStream,
-    send: SendStream,
-}
-
-impl EthersyncNodeConnection {
-    pub fn remote_node_id(&self) -> Option<NodeId> {
-        self.connection.remote_node_id().ok()
-    }
-
-    pub async fn send_message(&mut self, message: AutomergeSyncMessage) {
-        let message_buf = message.encode();
-        let message_len =
-            u32::try_from(message_buf.len()).expect("Failed to convert message length!");
-        self.send
-            .write_all(&message_len.to_be_bytes())
-            .await
-            .expect("Failed to send message length!");
-
-        self.send
-            .write_all(&message_buf)
-            .await
-            .expect("Failed to send message!");
-    }
-
-    pub async fn receive_message(&mut self) -> (NodeId, AutomergeSyncMessage) {
-        let mut message_len_buf = [0; 4];
-        self.receive
-            .read_exact(&mut message_len_buf)
-            .await
-            .expect("Failed to message length!");
-        let message_len = u32::from_be_bytes(message_len_buf);
-
-        let mut message_buf = vec![0; message_len as usize];
-        self.receive
-            .read_exact(&mut message_buf)
-            .await
-            .expect("Failed to message!");
-
-        let message =
-            AutomergeSyncMessage::decode(&message_buf).expect("Failed to parse automerge message!");
-
-        let from_node_id = self.remote_node_id().expect("Missing remote node ID!");
-
-        (from_node_id, message)
+    while let Some(action) = action_rx.next().await {
+        match action {
+            EthersyncNodeAction::Connect { secret_address } => {
+                let result = node.connect(secret_address).await;
+                if let Ok((connection, receive, send)) = result {
+                    event_tx
+                        .send(EthersyncNodeEvent::NewConnection {
+                            connection,
+                            receive,
+                            send,
+                        })
+                        .await
+                        .expect("failed to send event!");
+                }
+            }
+        }
     }
 }

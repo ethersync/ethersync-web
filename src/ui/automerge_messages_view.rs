@@ -1,5 +1,5 @@
-use dioxus::prelude::*;
 use crate::shared::automerge_document::FormattedAutomergeMessage;
+use dioxus::prelude::*;
 
 #[derive(PartialEq, Props, Clone)]
 pub struct AutomergeMessagesViewProps {
@@ -12,7 +12,7 @@ pub fn AutomergeMessagesView(props: AutomergeMessagesViewProps) -> Element {
         section {
             h2 { "Automerge Messages" }
 
-            if (&*props.automerge_messages.read()).is_empty() {
+            if props.automerge_messages.read().is_empty() {
                 p { "No messages yet!" }
             } else {
                 dl {

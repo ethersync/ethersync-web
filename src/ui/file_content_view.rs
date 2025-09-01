@@ -1,30 +1,26 @@
+use crate::shared::automerge_document::AutomergeDocumentFile;
 use dioxus::prelude::*;
 
 #[derive(PartialEq, Props, Clone)]
 pub struct FileContentViewProps {
-    content: String,
-    file_name: String,
+    selected_file: AutomergeDocumentFile,
 }
 
 #[component]
 pub fn FileContentView(props: FileContentViewProps) -> Element {
+    let file_name = props.selected_file.file_name;
+    let content = props.selected_file.content.unwrap_or_default();
     rsx! {
         section {
             h2 {
                 "File Content",
-                if !props.file_name.is_empty() {
-                    code { "({props.file_name})" }
-                }
+                code { "({file_name})" }
             }
 
             textarea {
                 disabled: true,
                 rows: 10,
-                if props.file_name.is_empty() {
-                    "no file selected!"
-                } else {
-                    "{props.content}"
-                }
+                "{content}"
             }
         }
     }

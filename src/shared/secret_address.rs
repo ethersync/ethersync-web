@@ -42,5 +42,5 @@ pub async fn get_secret_address_from_wormhole(code: &str) -> Result<SecretAddres
         .collect();
     let peer_node_id = fragments[0].to_string();
     let peer_passphrase = fragments[1].to_string();
-    Ok(SecretAddress::from_string(peer_node_id, peer_passphrase)?)
+    SecretAddress::from_string(peer_node_id, peer_passphrase)
 }

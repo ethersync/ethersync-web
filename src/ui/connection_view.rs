@@ -1,8 +1,9 @@
 use dioxus::prelude::*;
+use iroh::NodeId;
 
 #[derive(PartialEq, Props, Clone)]
 pub struct ConnectionViewProps {
-    remote_node_id: Signal<Option<String>>,
+    connected_peers: Vec<NodeId>,
 }
 
 #[component]
@@ -12,11 +13,14 @@ pub fn ConnectionView(props: ConnectionViewProps) -> Element {
             h2 { "Bidirectional Connection" }
 
             dl {
-                dt { "remote node ID:" }
+                dt { "remote node IDs:" }
                 dd {
-                    match &*props.remote_node_id.read() {
-                        Some(n) => rsx! { "{n}" },
-                        None => rsx! { "not connected" }
+                    if props.connected_peers.is_empty() {
+                        "not connected"
+                    } else {
+                        for n in  props.connected_peers {
+                            p { "{n}" }
+                        }
                     }
                 }
             }
