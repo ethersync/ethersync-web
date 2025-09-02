@@ -1,27 +1,24 @@
-use crate::shared::automerge_document::AutomergeDocumentFile;
+use crate::services::automerge_service::SELECTED_FILE;
 use dioxus::prelude::*;
 
-#[derive(PartialEq, Props, Clone)]
-pub struct FileContentViewProps {
-    selected_file: AutomergeDocumentFile,
-}
-
 #[component]
-pub fn FileContentView(props: FileContentViewProps) -> Element {
-    let file_name = props.selected_file.file_name;
-    let content = props.selected_file.content.unwrap_or_default();
-    rsx! {
-        section {
-            h2 {
-                "File Content",
-                code { "({file_name})" }
-            }
+pub fn FileContentView() -> Element {
+    if let Some(selected_file) = SELECTED_FILE.read().as_ref() {
+        rsx! {
+            section {
+                h2 {
+                    "File Content",
+                    code { "({selected_file.file_name})" }
+                }
 
-            textarea {
-                disabled: true,
-                rows: 10,
-                "{content}"
+                textarea {
+                    disabled: true,
+                    rows: 10,
+                    "{selected_file.content}"
+                }
             }
         }
+    } else {
+        rsx! {}
     }
 }

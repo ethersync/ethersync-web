@@ -1,30 +1,30 @@
+use crate::services::automerge_service::{AutomergeCommand, FILES};
 use dioxus::prelude::*;
 
-#[derive(PartialEq, Props, Clone)]
-pub struct FileListProps {
-    files: Vec<String>,
-    select_file: Callback<String>,
-}
-
 #[component]
-pub fn FileList(props: FileListProps) -> Element {
+pub fn FileList() -> Element {
+    let files = FILES.read().to_owned();
+    let automerge_service = use_coroutine_handle::<AutomergeCommand>();
+
     rsx! {
         section {
             h2 { "Files" }
 
             ul {
-                if props.files.is_empty() {
+                if files.is_empty() {
                     li { "No files!" }
                 } else {
-                    for name in props.files {
+                    for file_name in files {
                         li {
                             a {
                                 // TODO: use real href and router to allow permalinks
                                 href: "#",
                                 onclick: move |_| {
-                                  props.select_file.call(name.clone());
+                                    automerge_service.send(AutomergeCommand::SelectFile {
+                                        file_name: file_name.clone()
+                                    });
                                 },
-                                "{name}"
+                                "{file_name}"
                             }
                         }
                     }

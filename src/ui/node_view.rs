@@ -1,26 +1,34 @@
-use crate::shared::ethersync_node::EthersyncNodeInfo;
+use crate::services::node_service::{NODE_ERRORS, NODE_INFO};
 use dioxus::prelude::*;
 
-#[derive(PartialEq, Props, Clone)]
-pub struct NodeViewProps {
-    node_info: EthersyncNodeInfo,
-}
-
 #[component]
-pub fn NodeView(props: NodeViewProps) -> Element {
+pub fn NodeInfoView() -> Element {
+    let error_messages: Vec<String> = NODE_ERRORS.iter().map(|error| format!("{error}")).collect();
+
     rsx! {
         section {
             h2 { "Node" }
 
-            dl {
-                dt { "secret key:" }
-                dd { "{props.node_info.secret_key}" }
+            for text in error_messages {
+                p { "{text}" }
+            }
 
-                dt { "node ID:" }
-                dd { "{props.node_info.node_id}" }
+            match NODE_INFO.as_ref() {
+                None => rsx! {
+                    "Spawning node…"
+                },
+                Some(node_info) =>  rsx! {
+                    dl {
+                        dt { "secret key:" }
+                        dd { "{node_info.secret_key}" }
 
-                dt { "Ethersync passphrase:" }
-                dd { "{props.node_info.my_passphrase}" }
+                        dt { "node ID:" }
+                        dd { "{node_info.node_id}" }
+
+                        dt { "Ethersync passphrase:" }
+                        dd { "{node_info.my_passphrase}" }
+                    }
+                }
             }
         }
     }

@@ -1,11 +1,6 @@
-use crate::shared::secret_address::{get_secret_address_from_wormhole, SecretAddress};
+use crate::services::node_service::{NodeCommand, SecretAddress};
 use dioxus::prelude::*;
 use std::string::ToString;
-
-#[derive(PartialEq, Props, Clone)]
-pub struct ConnectionFormProps {
-    connect_to_peer: Callback<SecretAddress>,
-}
 
 #[component]
 fn SimpleForm() -> Element {
@@ -58,35 +53,46 @@ fn AdvancedForm() -> Element {
 }
 
 #[component]
-pub fn ConnectionForm(props: ConnectionFormProps) -> Element {
+pub fn ConnectionForm() -> Element {
+    let node_service = use_coroutine_handle::<NodeCommand>();
+
+    let mut form_error = use_signal(|| "".to_string());
     let mut mode = use_signal(|| "simple".to_string());
 
-    let onsubmit = move |event: FormEvent| async move {
+    let onsubmit = move |event: FormEvent| {
         event.stop_propagation();
         let form_data = event.values();
+        form_error.set("".to_string());
 
-        let secret_address = match mode.read().as_str() {
+        match mode.read().as_str() {
             "simple" => {
-                let code = form_data["join_code"].as_value();
-                get_secret_address_from_wormhole(&code).await
+                let join_code = form_data["join_code"].as_value();
+                node_service.send(NodeCommand::ConnectByJoinCode { join_code });
             }
-            "advanced" => SecretAddress::from_string(
-                form_data["peer_node_id"].as_value(),
-                form_data["peer_passphrase"].as_value(),
-            ),
+            "advanced" => {
+                match SecretAddress::from_string(
+                    form_data["peer_node_id"].as_value(),
+                    form_data["peer_passphrase"].as_value(),
+                ) {
+                    Ok(secret_address) => node_service.send(NodeCommand::ConnectByAddress {
+                        secret_address: Box::new(secret_address),
+                    }),
+                    Err(error) => {
+                        form_error.set(format!("{error}"));
+                    }
+                }
+            }
             _ => {
                 panic!("Unexpected form mode: {mode}")
             }
         };
-
-        props
-            .connect_to_peer
-            .call(secret_address.expect("Invalid secret address!"));
     };
 
     rsx! {
         section {
             h2 { "Bidirectional Connection" }
+
+            "{form_error}"
 
             form {
                 onsubmit,

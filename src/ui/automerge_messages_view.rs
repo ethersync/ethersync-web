@@ -1,23 +1,28 @@
-use crate::shared::automerge_document::FormattedAutomergeMessage;
+use crate::services::automerge_service::AUTOMERGE_ERRORS;
+use crate::services::connection_service::AUTOMERGE_MESSAGES;
 use dioxus::prelude::*;
 
-#[derive(PartialEq, Props, Clone)]
-pub struct AutomergeMessagesViewProps {
-    automerge_messages: Signal<Vec<FormattedAutomergeMessage>>,
-}
-
 #[component]
-pub fn AutomergeMessagesView(props: AutomergeMessagesViewProps) -> Element {
+pub fn AutomergeMessagesView() -> Element {
+    let error_messages: Vec<String> = AUTOMERGE_ERRORS
+        .iter()
+        .map(|error| format!("{error}"))
+        .collect();
+    let messages = AUTOMERGE_MESSAGES.read().to_owned();
     rsx! {
         section {
             h2 { "Automerge Messages" }
 
-            if props.automerge_messages.read().is_empty() {
+            for text in error_messages {
+                p { "{text}" }
+            }
+
+            if messages.is_empty() {
                 p { "No messages yet!" }
             } else {
                 dl {
-                    for formatted_message in &*props.automerge_messages.read() {
-                        dt { "{formatted_message.direction}" }
+                    for formatted_message in messages {
+                        dt { "{formatted_message.direction} {formatted_message.node_id}" }
                         dd {
                             details {
                                 summary {

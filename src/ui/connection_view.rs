@@ -1,24 +1,29 @@
+use crate::services::connection_service::{CONNECTED_PEERS, CONNECTION_ERRORS};
 use dioxus::prelude::*;
-use iroh::NodeId;
-
-#[derive(PartialEq, Props, Clone)]
-pub struct ConnectionViewProps {
-    connected_peers: Vec<NodeId>,
-}
 
 #[component]
-pub fn ConnectionView(props: ConnectionViewProps) -> Element {
+pub fn ConnectionView() -> Element {
+    let error_messages: Vec<String> = CONNECTION_ERRORS
+        .iter()
+        .map(|error| format!("{error}"))
+        .collect();
+    let connected_peers = CONNECTED_PEERS.read().to_owned();
+
     rsx! {
         section {
             h2 { "Bidirectional Connection" }
 
+            for text in error_messages {
+                p { "{text}" }
+            }
+
             dl {
                 dt { "remote node IDs:" }
                 dd {
-                    if props.connected_peers.is_empty() {
+                    if connected_peers.is_empty() {
                         "not connected"
                     } else {
-                        for n in  props.connected_peers {
+                        for n in connected_peers {
                             p { "{n}" }
                         }
                     }
