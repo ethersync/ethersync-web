@@ -21,6 +21,7 @@ derive_more = "1.0.0"
 anyhow = "1.0.98"
 magic-wormhole = "0.7.6"
 tokio = "1.45.1"
+postcard = "1.1.1"
 
 [features]
 default = ["web"]
