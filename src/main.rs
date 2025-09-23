@@ -44,6 +44,10 @@ pub fn EthersyncWeb(join_code: String) -> Element {
     let node_service = use_coroutine(start_node_service);
 
     use_effect(move || {
+        if join_code.is_empty() {
+            return;
+        }
+        
         node_service.send(NodeCommand::ConnectByJoinCode {
             join_code: join_code.clone(),
         });
