@@ -1,32 +1,27 @@
-use crate::services::connection_service::{CONNECTED_PEERS, CONNECTION_ERRORS};
+use crate::services::connection_service::{CONNECTED_PEERS, CONNECTION_EVENTS};
 use dioxus::prelude::*;
 
 #[component]
 pub fn ConnectionView() -> Element {
-    let error_messages: Vec<String> = CONNECTION_ERRORS
-        .iter()
-        .map(|error| format!("{error}"))
-        .collect();
-    let connected_peers = CONNECTED_PEERS.read().to_owned();
-
     rsx! {
         section {
-            h2 { "Bidirectional Connection" }
+            h2 { "Connected Peers" }
 
-            for text in error_messages {
-                p { "{text}" }
+            if CONNECTED_PEERS.is_empty() {
+                p { "not connected" }
+            } else {
+                ul {
+                    for node_id in CONNECTED_PEERS.iter() {
+                        li { "{node_id}" }
+                    }
+                }
             }
 
-            dl {
-                dt { "remote node IDs:" }
-                dd {
-                    if connected_peers.is_empty() {
-                        "not connected"
-                    } else {
-                        for n in connected_peers {
-                            p { "{n}" }
-                        }
-                    }
+            hr { }
+
+            ul {
+                for event in CONNECTION_EVENTS.iter() {
+                    li { "{event}" }
                 }
             }
         }

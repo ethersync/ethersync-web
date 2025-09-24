@@ -2,6 +2,7 @@ use crate::services::automerge_service::{AutomergeCommand, FormattedAutomergeMes
 use crate::services::node_service::NODE_INFO;
 use anyhow::{anyhow, Context, Error, Result};
 use automerge::sync::Message as AutomergeSyncMessage;
+use chrono::{DateTime, Local};
 use derive_more::{Deref, Display};
 use dioxus::hooks::UnboundedReceiver;
 use dioxus::prelude::{
@@ -19,7 +20,6 @@ use tokio::sync::broadcast::{Receiver, Sender};
 pub static AUTOMERGE_MESSAGES: GlobalSignal<Vec<FormattedAutomergeMessage>> =
     Signal::global(Vec::new);
 pub static CONNECTED_PEERS: GlobalSignal<Vec<NodeId>> = Signal::global(Vec::new);
-pub static CONNECTION_ERRORS: GlobalSignal<Vec<Error>> = Signal::global(Vec::new);
 
 pub enum ConnectionCommand {
     NewConnection {
@@ -30,6 +30,48 @@ pub enum ConnectionCommand {
     SendMessage {
         message: AutomergeSyncMessage,
     },
+}
+
+pub enum ConnectionEvent {
+    Connected {
+        date_time: DateTime<Local>,
+        remote_node_id: NodeId,
+    },
+    Disconnected {
+        date_time: DateTime<Local>,
+        remote_node_id: NodeId,
+    },
+    Error {
+        date_time: DateTime<Local>,
+        error: Error,
+    },
+}
+
+impl Display for ConnectionEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionEvent::Connected {
+                date_time,
+                remote_node_id,
+            } => write!(f, "{date_time}: connected to {remote_node_id}"),
+            ConnectionEvent::Disconnected {
+                date_time,
+                remote_node_id,
+            } => write!(f, "{date_time}: disconnected from {remote_node_id}"),
+            ConnectionEvent::Error { date_time, error } => {
+                write!(f, "{date_time}: node error {error}")
+            }
+        }
+    }
+}
+
+pub static CONNECTION_EVENTS: GlobalSignal<Vec<ConnectionEvent>> = Signal::global(Vec::new);
+
+fn handle_error(error: Error) {
+    CONNECTION_EVENTS.write().push(ConnectionEvent::Error {
+        date_time: Local::now(),
+        error,
+    });
 }
 
 pub type CursorId = String;
@@ -110,14 +152,18 @@ fn start_receiving_messages(
                         automerge_service.send(AutomergeCommand::ApplyMessage { message });
                         AUTOMERGE_MESSAGES.write().push(formatted_message);
                     }
-                    Err(error) => {
-                        CONNECTION_ERRORS.write().push(error);
-                    }
+                    Err(error) => handle_error(error),
                 }
             }
         }
 
         CONNECTED_PEERS.write().retain(|&n| n != remote_node_id);
+        CONNECTION_EVENTS
+            .write()
+            .push(ConnectionEvent::Disconnected {
+                date_time: Local::now(),
+                remote_node_id,
+            });
     });
 }
 
@@ -139,7 +185,7 @@ fn start_sending_messages(
     spawn(async move {
         while let Ok(message) = outgoing_message_rx.recv().await {
             if let Err(error) = send_message(&mut send, message).await {
-                CONNECTION_ERRORS.write().push(error);
+                handle_error(error);
             }
         }
     });
@@ -161,6 +207,11 @@ async fn handle_connection_command(
             start_sending_messages(send, outgoing_message_tx.subscribe());
 
             CONNECTED_PEERS.write().push(remote_node_id);
+            CONNECTION_EVENTS.write().push(ConnectionEvent::Connected {
+                date_time: Local::now(),
+                remote_node_id,
+            });
+
             automerge_service.send(AutomergeCommand::StartSync);
         }
         ConnectionCommand::SendMessage { message } => {
@@ -174,9 +225,7 @@ async fn handle_connection_command(
                     outgoing_message_tx.send(message.clone())?;
                     AUTOMERGE_MESSAGES.write().push(formatted_message);
                 }
-                Err(error) => {
-                    CONNECTION_ERRORS.write().push(error);
-                }
+                Err(error) => handle_error(error),
             }
         }
     }
@@ -192,7 +241,7 @@ pub async fn start_connection_service(mut commands_rx: UnboundedReceiver<Connect
         if let Err(error) =
             handle_connection_command(command, &outgoing_message_tx, automerge_service).await
         {
-            CONNECTION_ERRORS.write().push(error);
+            handle_error(error);
         }
     }
 }
