@@ -45,6 +45,16 @@ pub enum ConnectionEvent {
         date_time: DateTime<Local>,
         error: Error,
     },
+    IncomingPeerMessage {
+        date_time: DateTime<Local>,
+        remote_node_id: NodeId,
+        message_type: String,
+    },
+    OutgoingPeerMessage {
+        date_time: DateTime<Local>,
+        remote_node_id: NodeId,
+        message_type: String,
+    },
 }
 
 impl Display for ConnectionEvent {
@@ -60,6 +70,26 @@ impl Display for ConnectionEvent {
             } => write!(f, "{date_time}: disconnected from {remote_node_id}"),
             ConnectionEvent::Error { date_time, error } => {
                 write!(f, "{date_time}: node error {error}")
+            }
+            ConnectionEvent::IncomingPeerMessage {
+                date_time,
+                remote_node_id,
+                message_type,
+            } => {
+                write!(
+                    f,
+                    "{date_time}: received {message_type} message from {remote_node_id}"
+                )
+            }
+            ConnectionEvent::OutgoingPeerMessage {
+                date_time,
+                remote_node_id,
+                message_type,
+            } => {
+                write!(
+                    f,
+                    "{date_time}: sent {message_type} message to {remote_node_id}"
+                )
             }
         }
     }
@@ -140,6 +170,13 @@ fn handle_peer_message(
             let formatted_message =
                 FormattedAutomergeMessage::new("received", remote_node_id, &message)?;
             automerge_service.send(AutomergeCommand::ApplyMessage { message });
+            CONNECTION_EVENTS
+                .write()
+                .push(ConnectionEvent::IncomingPeerMessage {
+                    date_time: Local::now(),
+                    remote_node_id,
+                    message_type: "sync".to_string(),
+                });
             AUTOMERGE_MESSAGES.write().push(formatted_message);
         }
         PeerMessage::Ephemeral(_message_buf) => {
@@ -178,7 +215,11 @@ fn start_receiving_messages(
     });
 }
 
-pub async fn send_message(send: &mut SendStream, message: AutomergeSyncMessage) -> Result<()> {
+pub async fn send_message(
+    remote_node_id: NodeId,
+    send: &mut SendStream,
+    message: AutomergeSyncMessage,
+) -> Result<()> {
     let peer_message = PeerMessage::Sync(message.encode());
     let message_buf = to_allocvec(&peer_message)?;
     let message_len = u32::try_from(message_buf.len())?;
@@ -186,16 +227,25 @@ pub async fn send_message(send: &mut SendStream, message: AutomergeSyncMessage) 
 
     send.write_all(&message_buf).await?;
 
+    CONNECTION_EVENTS
+        .write()
+        .push(ConnectionEvent::OutgoingPeerMessage {
+            date_time: Local::now(),
+            remote_node_id,
+            message_type: "sync".to_string(),
+        });
+
     Ok(())
 }
 
 fn start_sending_messages(
+    remote_node_id: NodeId,
     mut send: SendStream,
     mut outgoing_message_rx: Receiver<AutomergeSyncMessage>,
 ) {
     spawn(async move {
         while let Ok(message) = outgoing_message_rx.recv().await {
-            if let Err(error) = send_message(&mut send, message).await {
+            if let Err(error) = send_message(remote_node_id, &mut send, message).await {
                 handle_error(error);
             }
         }
@@ -215,7 +265,7 @@ async fn handle_connection_command(
         } => {
             let remote_node_id = connection.remote_node_id()?;
             start_receiving_messages(remote_node_id, receive, automerge_service);
-            start_sending_messages(send, outgoing_message_tx.subscribe());
+            start_sending_messages(remote_node_id, send, outgoing_message_tx.subscribe());
 
             CONNECTED_PEERS.write().push(remote_node_id);
             CONNECTION_EVENTS.write().push(ConnectionEvent::Connected {
