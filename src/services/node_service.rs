@@ -1,8 +1,10 @@
 use crate::services::connection_service::ConnectionCommand;
+use derive_more::Display;
 use std::ops::Deref;
 use std::str::FromStr;
 
 use anyhow::{bail, Error, Result};
+use chrono::{DateTime, Local};
 use dioxus::hooks::use_coroutine_handle;
 use dioxus::prelude::{spawn, Coroutine, GlobalSignal, Signal};
 use futures::channel::mpsc::UnboundedReceiver;
@@ -21,7 +23,34 @@ pub struct EthersyncNodeInfo {
 }
 
 pub static NODE_INFO: GlobalSignal<Option<EthersyncNodeInfo>> = Signal::global(|| None);
-pub static NODE_ERRORS: GlobalSignal<Vec<Error>> = Signal::global(Vec::new);
+
+pub enum NodeEvent {
+    Error {
+        date_time: DateTime<Local>,
+        error: Error,
+    },
+    Spawned {
+        date_time: DateTime<Local>,
+    },
+}
+
+impl Display for NodeEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NodeEvent::Error { date_time, error } => write!(f, "{date_time}: node error {error}"),
+            NodeEvent::Spawned { date_time } => write!(f, "{date_time}: node spawned"),
+        }
+    }
+}
+
+pub static NODE_EVENTS: GlobalSignal<Vec<NodeEvent>> = Signal::global(Vec::new);
+
+fn handle_error(error: Error) {
+    NODE_EVENTS.write().push(NodeEvent::Error {
+        date_time: Local::now(),
+        error,
+    });
+}
 
 fn generate_random_secret_key() -> SecretKey {
     SecretKey::generate(rand::thread_rng())
@@ -108,7 +137,7 @@ async fn accept_incoming_connections(
                     )
                     .await
                     {
-                        NODE_ERRORS.write().push(error);
+                        handle_error(error)
                     }
                 }
             }
@@ -140,10 +169,9 @@ pub async fn connect(
 pub async fn get_secret_address_from_wormhole(code: &str) -> Result<SecretAddress> {
     let config = transfer::APP_CONFIG.id(AppID::new("ethersync"));
 
-    let mailbox_connection = MailboxConnection::connect(config, Code::from_str(code)?, false).await?;
-    let mut wormhole =
-        Wormhole::connect(mailbox_connection)
-            .await?;
+    let mailbox_connection =
+        MailboxConnection::connect(config, Code::from_str(code)?, false).await?;
+    let mut wormhole = Wormhole::connect(mailbox_connection).await?;
     let bytes = wormhole.receive().await?;
     let fragments: Vec<String> = String::from_utf8(bytes)?
         .clone()
@@ -185,6 +213,9 @@ pub async fn start_node_service(mut commands_rx: UnboundedReceiver<NodeCommand>)
                 my_passphrase: my_passphrase.clone().to_string(),
                 secret_key: secret_key.to_string(),
             });
+            NODE_EVENTS.write().push(NodeEvent::Spawned {
+                date_time: Local::now(),
+            });
 
             accept_incoming_connections(endpoint.clone(), my_passphrase, connection_service).await;
 
@@ -192,12 +223,10 @@ pub async fn start_node_service(mut commands_rx: UnboundedReceiver<NodeCommand>)
                 if let Err(error) =
                     handle_node_command(endpoint.clone(), command, connection_service).await
                 {
-                    NODE_ERRORS.write().push(error);
+                    handle_error(error)
                 }
             }
         }
-        Err(error) => {
-            NODE_ERRORS.write().push(error);
-        }
+        Err(error) => handle_error(error),
     }
 }

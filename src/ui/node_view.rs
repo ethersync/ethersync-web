@@ -1,17 +1,11 @@
-use crate::services::node_service::{NODE_ERRORS, NODE_INFO};
+use crate::services::node_service::{NODE_EVENTS, NODE_INFO};
 use dioxus::prelude::*;
 
 #[component]
 pub fn NodeInfoView() -> Element {
-    let error_messages: Vec<String> = NODE_ERRORS.iter().map(|error| format!("{error}")).collect();
-
     rsx! {
         section {
             h2 { "Node" }
-
-            for text in error_messages {
-                p { "{text}" }
-            }
 
             match NODE_INFO.as_ref() {
                 None => rsx! {
@@ -28,6 +22,14 @@ pub fn NodeInfoView() -> Element {
                         dt { "Ethersync passphrase:" }
                         dd { "{node_info.my_passphrase}" }
                     }
+                }
+            }
+
+            hr { }
+
+            ul {
+                for event in NODE_EVENTS.iter() {
+                    li { "{event}" }
                 }
             }
         }

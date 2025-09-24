@@ -47,7 +47,7 @@ pub fn EthersyncWeb(join_code: String) -> Element {
         if join_code.is_empty() {
             return;
         }
-        
+
         node_service.send(NodeCommand::ConnectByJoinCode {
             join_code: join_code.clone(),
         });
