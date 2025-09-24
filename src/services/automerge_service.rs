@@ -28,15 +28,14 @@ pub struct FormattedAutomergeMessage {
 
 impl FormattedAutomergeMessage {
     pub fn new(direction: &str, node_id: NodeId, message: &AutomergeSyncMessage) -> Result<Self> {
-        let heads = message
-            .heads
-            .iter()
-            .map(|h| h.to_string())
-            .collect::<Vec<String>>()
-            .join(", ");
+        let heads = serde_json::to_string_pretty(&message.heads)?;
 
-        let json = serde_json::to_string_pretty(&message)?;
-
+        let mut message_meta =   HashMap::new();
+        message_meta.insert("have".to_string(),  serde_json::to_string_pretty(&message.have)?);
+        message_meta.insert("heads".to_string(), heads.clone());
+        message_meta.insert("need".to_string(),  serde_json::to_string_pretty(&message.need)?);
+        message_meta.insert("version".to_string(), format!("{:?}", message.version));
+        let json = serde_json::to_string_pretty(&message_meta)?;
         Ok(Self {
             direction: direction.to_string(),
             node_id: node_id.to_string(),
