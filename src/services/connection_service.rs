@@ -129,14 +129,24 @@ async fn receive_peer_message(receive: &mut RecvStream) -> Result<PeerMessage> {
     from_bytes(&message_buf).context("Failed to convert bytes to PeerMessage")
 }
 
-async fn receive_message(receive: &mut RecvStream) -> Result<Option<AutomergeSyncMessage>> {
-    match receive_peer_message(receive).await? {
-        PeerMessage::Sync(message_buf) => Ok(Some(AutomergeSyncMessage::decode(&message_buf)?)),
+fn handle_peer_message(
+    remote_node_id: NodeId,
+    peer_message: PeerMessage,
+    automerge_service: Coroutine<AutomergeCommand>,
+) -> Result<()> {
+    match peer_message {
+        PeerMessage::Sync(message_buf) => {
+            let message = AutomergeSyncMessage::decode(&message_buf)?;
+            let formatted_message =
+                FormattedAutomergeMessage::new("received", remote_node_id, &message)?;
+            automerge_service.send(AutomergeCommand::ApplyMessage { message });
+            AUTOMERGE_MESSAGES.write().push(formatted_message);
+        }
         PeerMessage::Ephemeral(_message_buf) => {
             // TODO: implement the ephemerality
-            Ok(None)
         }
     }
+    Ok(())
 }
 
 fn start_receiving_messages(
@@ -145,14 +155,15 @@ fn start_receiving_messages(
     automerge_service: Coroutine<AutomergeCommand>,
 ) {
     spawn(async move {
-        while let Ok(maybe_message) = receive_message(&mut receive).await {
-            if let Some(message) = maybe_message {
-                match FormattedAutomergeMessage::new("received", remote_node_id, &message) {
-                    Ok(formatted_message) => {
-                        automerge_service.send(AutomergeCommand::ApplyMessage { message });
-                        AUTOMERGE_MESSAGES.write().push(formatted_message);
-                    }
-                    Err(error) => handle_error(error),
+        loop {
+            let maybe_message = receive_peer_message(&mut receive).await;
+            if let Ok(peer_message) = maybe_message {
+                if let Err(error) =
+                    handle_peer_message(remote_node_id, peer_message, automerge_service)
+                {
+                    handle_error(error);
+                    // TODO: can we recover from a failed message?
+                    break;
                 }
             }
         }
