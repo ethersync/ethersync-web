@@ -7,6 +7,7 @@ use anyhow::{bail, Error, Result};
 use chrono::{DateTime, Local};
 use dioxus::hooks::use_coroutine_handle;
 use dioxus::prelude::{spawn, Coroutine, GlobalSignal, Signal};
+use ethersync_shared::keypair::Keypair;
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::StreamExt;
 use iroh::endpoint::Incoming;
@@ -203,21 +204,28 @@ pub async fn start_node_service(mut commands_rx: UnboundedReceiver<NodeCommand>)
     let connection_service = use_coroutine_handle::<ConnectionCommand>();
 
     // TODO: store passphrase and allow changing it
-    let my_passphrase = generate_random_secret_key();
+    let keypair = Keypair {
+        secret_key: generate_random_secret_key(),
+        passphrase: generate_random_secret_key(),
+    };
 
-    let secret_key = generate_random_secret_key();
-    match create_endpoint(secret_key.clone()).await {
+    match create_endpoint(keypair.secret_key.clone()).await {
         Ok(endpoint) => {
             *NODE_INFO.write() = Some(EthersyncNodeInfo {
                 node_id: endpoint.node_id(),
-                my_passphrase: my_passphrase.clone().to_string(),
-                secret_key: secret_key.to_string(),
+                my_passphrase: keypair.passphrase.to_string(),
+                secret_key: keypair.secret_key.to_string(),
             });
             NODE_EVENTS.write().push(NodeEvent::Spawned {
                 date_time: Local::now(),
             });
 
-            accept_incoming_connections(endpoint.clone(), my_passphrase, connection_service).await;
+            accept_incoming_connections(
+                endpoint.clone(),
+                keypair.passphrase.clone(),
+                connection_service,
+            )
+            .await;
 
             while let Some(command) = commands_rx.next().await {
                 if let Err(error) =

@@ -1,0 +1,4 @@
+[submodule "ethersync"]
+	path = ethersync
+	url = https://github.com/winniehell-forks/ethersync/
+	branch = winniehell-shared-keypair

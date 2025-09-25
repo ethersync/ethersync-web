@@ -2077,6 +2077,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ethersync-shared"
+version = "0.0.0"
+dependencies = [
+ "iroh",
+]
+
+[[package]]
 name = "ethersync-web"
 version = "0.1.0"
 dependencies = [
@@ -2087,6 +2094,7 @@ dependencies = [
  "constant_time_eq",
  "derive_more 1.0.0",
  "dioxus",
+ "ethersync-shared",
  "futures",
  "iroh",
  "magic-wormhole",

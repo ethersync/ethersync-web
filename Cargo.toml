@@ -23,6 +23,7 @@ magic-wormhole = "0.7.6"
 tokio = "1.45.1"
 postcard = "1.1.1"
 chrono = "0.4.42"
+ethersync-shared = { version = "0.0.0", path = "ethersync/daemon/shared" }
 
 [features]
 default = ["web"]
