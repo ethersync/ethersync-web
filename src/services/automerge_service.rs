@@ -2,11 +2,12 @@ use crate::services::connection_service::ConnectionCommand;
 use anyhow::{bail, Error, Result};
 use automerge::sync::{Message as AutomergeSyncMessage, State as SyncState, State, SyncDoc};
 use automerge::{Automerge, ChangeHash, ObjId, ReadDoc};
+use chrono::{DateTime, Local};
 use dioxus::hooks::use_coroutine_handle;
 use dioxus::prelude::{Coroutine, GlobalSignal, Readable, Signal};
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::StreamExt;
-use iroh::NodeId;
+use std::fmt::Display;
 
 #[derive(Clone, PartialEq)]
 pub struct AutomergeDocumentFile {
@@ -14,36 +15,74 @@ pub struct AutomergeDocumentFile {
     pub content: String,
 }
 
-pub static AUTOMERGE_ERRORS: GlobalSignal<Vec<Error>> = Signal::global(Vec::new);
-pub static FILES: GlobalSignal<Vec<String>> = Signal::global(Vec::new);
-pub static SELECTED_FILE: GlobalSignal<Option<AutomergeDocumentFile>> = Signal::global(|| None);
-
-#[derive(Clone)]
-pub struct FormattedAutomergeMessage {
-    pub direction: String,
-    pub node_id: String,
-    pub heads: String,
-    pub json: String,
+pub struct MessageDetails {
+    heads: String,
+    last_sync: String,
+    need: String,
+    version: String,
 }
 
-impl FormattedAutomergeMessage {
-    pub fn new(direction: &str, node_id: NodeId, message: &AutomergeSyncMessage) -> Result<Self> {
-        let heads = serde_json::to_string_pretty(&message.heads)?;
-
-        let mut message_meta =   HashMap::new();
-        message_meta.insert("have".to_string(),  serde_json::to_string_pretty(&message.have)?);
-        message_meta.insert("heads".to_string(), heads.clone());
-        message_meta.insert("need".to_string(),  serde_json::to_string_pretty(&message.need)?);
-        message_meta.insert("version".to_string(), format!("{:?}", message.version));
-        let json = serde_json::to_string_pretty(&message_meta)?;
+impl MessageDetails {
+    fn from_message(message: &AutomergeSyncMessage) -> Result<Self> {
+        let last_sync: Vec<ChangeHash> = message
+            .have
+            .iter()
+            .flat_map(|h| h.last_sync.clone())
+            .collect();
         Ok(Self {
-            direction: direction.to_string(),
-            node_id: node_id.to_string(),
-            heads,
-            json,
+            last_sync: serde_json::to_string_pretty(&last_sync)?,
+            heads: serde_json::to_string_pretty(&message.heads)?,
+            need: serde_json::to_string_pretty(&message.need)?,
+            version: format!("{:?}", message.version),
         })
     }
 }
+
+impl Display for MessageDetails {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "last_sync: {}\nheads: {}\nneed: {}\nversion: {}",
+            self.last_sync, self.heads, self.need, self.version
+        )
+    }
+}
+
+pub enum AutomergeEvent {
+    AppliedSyncMessage {
+        date_time: DateTime<Local>,
+        details: MessageDetails,
+    },
+    CreatedSyncMessage {
+        date_time: DateTime<Local>,
+        details: MessageDetails,
+    },
+    Error {
+        date_time: DateTime<Local>,
+        error: Error,
+    },
+}
+
+impl Display for AutomergeEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AutomergeEvent::AppliedSyncMessage { date_time, details } => {
+                write!(f, "{date_time}: applied sync message:\n{details}")
+            }
+            AutomergeEvent::CreatedSyncMessage { date_time, details } => {
+                write!(f, "{date_time}: created sync message:\n{details}")
+            }
+            AutomergeEvent::Error { date_time, error } => {
+                write!(f, "{date_time}: automerge error {error}")
+            }
+        }
+    }
+}
+
+pub static AUTOMERGE_EVENTS: GlobalSignal<Vec<AutomergeEvent>> = Signal::global(Vec::new);
+
+pub static FILES: GlobalSignal<Vec<String>> = Signal::global(Vec::new);
+pub static SELECTED_FILE: GlobalSignal<Option<AutomergeDocumentFile>> = Signal::global(|| None);
 
 async fn apply_message(
     doc: &mut Automerge,
@@ -98,7 +137,14 @@ async fn handle_automerge_command(
 ) -> Result<()> {
     match command {
         AutomergeCommand::ApplyMessage { message } => {
+            let details = MessageDetails::from_message(&message)?;
             apply_message(doc, state, message).await?;
+            AUTOMERGE_EVENTS
+                .write()
+                .push(AutomergeEvent::AppliedSyncMessage {
+                    date_time: Local::now(),
+                    details,
+                });
 
             *FILES.write() = files(doc)?;
 
@@ -116,11 +162,25 @@ async fn handle_automerge_command(
         }
         AutomergeCommand::StartSync => {
             while let Some(message) = doc.generate_sync_message(state) {
+                let details = MessageDetails::from_message(&message)?;
+                AUTOMERGE_EVENTS
+                    .write()
+                    .push(AutomergeEvent::CreatedSyncMessage {
+                        date_time: Local::now(),
+                        details,
+                    });
                 connection_service.send(ConnectionCommand::SendMessage { message });
             }
         }
     }
     Ok(())
+}
+
+fn handle_error(error: Error) {
+    AUTOMERGE_EVENTS.write().push(AutomergeEvent::Error {
+        date_time: Local::now(),
+        error,
+    });
 }
 
 pub async fn start_automerge_service(mut commands_rx: UnboundedReceiver<AutomergeCommand>) {
@@ -134,7 +194,7 @@ pub async fn start_automerge_service(mut commands_rx: UnboundedReceiver<Automerg
         if let Err(error) =
             handle_automerge_command(&mut doc, &mut state, command, connection_service).await
         {
-            AUTOMERGE_ERRORS.write().push(error);
+            handle_error(error);
         }
     }
 }

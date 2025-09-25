@@ -1,13 +1,10 @@
-use crate::services::automerge_service::{AutomergeCommand, FormattedAutomergeMessage};
-use crate::services::node_service::NODE_INFO;
-use anyhow::{anyhow, Context, Error, Result};
+use crate::services::automerge_service::AutomergeCommand;
+use anyhow::{Context, Error, Result};
 use automerge::sync::Message as AutomergeSyncMessage;
 use chrono::{DateTime, Local};
 use derive_more::{Deref, Display};
 use dioxus::hooks::UnboundedReceiver;
-use dioxus::prelude::{
-    spawn, use_coroutine_handle, Coroutine, GlobalSignal, ReadableOptionExt, Signal,
-};
+use dioxus::prelude::{spawn, use_coroutine_handle, Coroutine, GlobalSignal, Signal};
 use futures::StreamExt;
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::NodeId;
@@ -17,8 +14,6 @@ use std::path::PathBuf;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::{Receiver, Sender};
 
-pub static AUTOMERGE_MESSAGES: GlobalSignal<Vec<FormattedAutomergeMessage>> =
-    Signal::global(Vec::new);
 pub static CONNECTED_PEERS: GlobalSignal<Vec<NodeId>> = Signal::global(Vec::new);
 
 pub enum ConnectionCommand {
@@ -69,7 +64,7 @@ impl Display for ConnectionEvent {
                 remote_node_id,
             } => write!(f, "{date_time}: disconnected from {remote_node_id}"),
             ConnectionEvent::Error { date_time, error } => {
-                write!(f, "{date_time}: node error {error}")
+                write!(f, "{date_time}: connection error {error}")
             }
             ConnectionEvent::IncomingPeerMessage {
                 date_time,
@@ -167,8 +162,6 @@ fn handle_peer_message(
     match peer_message {
         PeerMessage::Sync(message_buf) => {
             let message = AutomergeSyncMessage::decode(&message_buf)?;
-            let formatted_message =
-                FormattedAutomergeMessage::new("received", remote_node_id, &message)?;
             automerge_service.send(AutomergeCommand::ApplyMessage { message });
             CONNECTION_EVENTS
                 .write()
@@ -177,7 +170,6 @@ fn handle_peer_message(
                     remote_node_id,
                     message_type: "sync".to_string(),
                 });
-            AUTOMERGE_MESSAGES.write().push(formatted_message);
         }
         PeerMessage::Ephemeral(_message_buf) => {
             // TODO: implement the ephemerality
@@ -276,18 +268,7 @@ async fn handle_connection_command(
             automerge_service.send(AutomergeCommand::StartSync);
         }
         ConnectionCommand::SendMessage { message } => {
-            let node_id = NODE_INFO
-                .as_ref()
-                .map(|n| Ok(n.node_id))
-                .unwrap_or(Err(anyhow!("missing node ID!")))?;
-
-            match FormattedAutomergeMessage::new("sent", node_id, &message) {
-                Ok(formatted_message) => {
-                    outgoing_message_tx.send(message.clone())?;
-                    AUTOMERGE_MESSAGES.write().push(formatted_message);
-                }
-                Err(error) => handle_error(error),
-            }
+            outgoing_message_tx.send(message)?;
         }
     }
     Ok(())

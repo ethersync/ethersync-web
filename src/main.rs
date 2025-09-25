@@ -6,9 +6,8 @@ mod ui;
 use crate::services::automerge_service::start_automerge_service;
 use crate::services::connection_service::start_connection_service;
 use crate::services::node_service::{start_node_service, NodeCommand, NODE_INFO};
+use crate::ui::automerge_document_view::AutomergeDocumentView;
 use crate::ui::file_content_view::FileContentView;
-use crate::ui::file_list::FileList;
-use ui::automerge_messages_view::AutomergeMessagesView;
 use ui::connection_form::ConnectionForm;
 use ui::connection_view::ConnectionView;
 use ui::node_view::NodeInfoView;
@@ -63,8 +62,7 @@ pub fn EthersyncWeb(join_code: String) -> Element {
         }
 
         ConnectionView { }
-        FileList { }
+        AutomergeDocumentView { }
         FileContentView { }
-        AutomergeMessagesView { }
     }
 }
