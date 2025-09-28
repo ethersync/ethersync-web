@@ -2,15 +2,15 @@ use crate::services::automerge_service::AutomergeCommand;
 use anyhow::{Context, Error, Result};
 use automerge::sync::Message as AutomergeSyncMessage;
 use chrono::{DateTime, Local};
-use derive_more::{Deref, Display};
+use derive_more::Display;
 use dioxus::hooks::UnboundedReceiver;
 use dioxus::prelude::{spawn, use_coroutine_handle, Coroutine, GlobalSignal, Signal};
+use ethersync_shared::types::EphemeralMessage;
 use futures::StreamExt;
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::NodeId;
 use postcard::{from_bytes, to_allocvec};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::{Receiver, Sender};
 
@@ -97,40 +97,6 @@ fn handle_error(error: Error) {
         date_time: Local::now(),
         error,
     });
-}
-
-pub type CursorId = String;
-
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Position {
-    pub line: usize,
-    pub character: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Range {
-    pub start: Position,
-    pub end: Position,
-}
-
-/// Paths like these are relative to the shared directory.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, Hash, Deref, Display)]
-#[display("'{}'", self.0.display())]
-#[must_use]
-pub struct RelativePath(PathBuf);
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
-pub struct CursorState {
-    pub name: Option<String>,
-    pub file_path: RelativePath,
-    pub ranges: Vec<Range>,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
-pub struct EphemeralMessage {
-    pub cursor_id: CursorId,
-    pub sequence_number: usize,
-    pub cursor_state: CursorState,
 }
 
 #[derive(Deserialize, Serialize)]
