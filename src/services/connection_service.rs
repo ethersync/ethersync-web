@@ -5,12 +5,11 @@ use chrono::{DateTime, Local};
 use derive_more::Display;
 use dioxus::hooks::UnboundedReceiver;
 use dioxus::prelude::{spawn, use_coroutine_handle, Coroutine, GlobalSignal, Signal};
-use ethersync_shared::types::EphemeralMessage;
+use ethersync_shared::messages::PeerMessage;
 use futures::StreamExt;
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::NodeId;
 use postcard::{from_bytes, to_allocvec};
-use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::{Receiver, Sender};
 
@@ -97,16 +96,6 @@ fn handle_error(error: Error) {
         date_time: Local::now(),
         error,
     });
-}
-
-#[derive(Deserialize, Serialize)]
-/// The `PeerMessage` is used for peer to peer data exchange.
-pub enum PeerMessage {
-    /// The Sync message contains the changes to the CRDT
-    Sync(Vec<u8>),
-    /// The Ephemeral message currently is used for cursor messages, but can later be used for
-    /// other things that should not be persisted.
-    Ephemeral(EphemeralMessage),
 }
 
 async fn receive_peer_message(receive: &mut RecvStream) -> Result<PeerMessage> {
