@@ -1,18 +1,18 @@
 use crate::services::connection_service::ConnectionCommand;
 use derive_more::Display;
 use std::ops::Deref;
-use std::str::FromStr;
 
 use anyhow::{bail, Error, Result};
 use chrono::{DateTime, Local};
 use dioxus::hooks::use_coroutine_handle;
 use dioxus::prelude::{spawn, Coroutine, GlobalSignal, Signal};
 use ethersync_shared::keypair::Keypair;
+use ethersync_shared::secret_address::SecretAddress;
+use ethersync_shared::wormhole::get_secret_address_from_wormhole;
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::StreamExt;
 use iroh::endpoint::Incoming;
 use iroh::{Endpoint, NodeId, SecretKey};
-use magic_wormhole::{transfer, AppID, Code, MailboxConnection, Wormhole};
 
 const ALPN: &[u8] = b"/ethersync/0";
 
@@ -55,31 +55,6 @@ fn handle_error(error: Error) {
 
 fn generate_random_secret_key() -> SecretKey {
     SecretKey::generate(rand::thread_rng())
-}
-
-pub struct SecretAddress {
-    pub peer_node_id: NodeId,
-    pub peer_passphrase: SecretKey,
-}
-
-impl SecretAddress {
-    pub fn from_string(peer_node_id: String, peer_passphrase: String) -> Result<Self> {
-        if peer_node_id.is_empty() {
-            bail!("peer_node_id is empty!")
-        }
-
-        if peer_passphrase.is_empty() {
-            bail!("peer_passphrase is empty!")
-        }
-
-        let peer_node_id = NodeId::from_str(&peer_node_id)?;
-        let peer_passphrase = SecretKey::from_str(&peer_passphrase)?;
-
-        Ok(Self {
-            peer_node_id,
-            peer_passphrase,
-        })
-    }
 }
 
 pub enum NodeCommand {
@@ -151,11 +126,11 @@ pub async fn connect(
     secret_address: &SecretAddress,
     connection_service: Coroutine<ConnectionCommand>,
 ) -> Result<()> {
-    let connection = endpoint.connect(secret_address.peer_node_id, ALPN).await?;
+    let connection = endpoint.connect(secret_address.node_id, ALPN).await?;
 
     let (mut send, receive) = connection.open_bi().await?;
 
-    send.write_all(&secret_address.peer_passphrase.to_bytes())
+    send.write_all(&secret_address.passphrase.to_bytes())
         .await?;
 
     connection_service.send(ConnectionCommand::NewConnection {
@@ -165,23 +140,6 @@ pub async fn connect(
     });
 
     Ok(())
-}
-
-pub async fn get_secret_address_from_wormhole(code: &str) -> Result<SecretAddress> {
-    let config = transfer::APP_CONFIG.id(AppID::new("ethersync"));
-
-    let mailbox_connection =
-        MailboxConnection::connect(config, Code::from_str(code)?, false).await?;
-    let mut wormhole = Wormhole::connect(mailbox_connection).await?;
-    let bytes = wormhole.receive().await?;
-    let fragments: Vec<String> = String::from_utf8(bytes)?
-        .clone()
-        .split("#")
-        .map(|value| value.to_string())
-        .collect();
-    let peer_node_id = fragments[0].to_string();
-    let peer_passphrase = fragments[1].to_string();
-    SecretAddress::from_string(peer_node_id, peer_passphrase)
 }
 
 async fn handle_node_command(

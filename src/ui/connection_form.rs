@@ -1,5 +1,6 @@
-use crate::services::node_service::{NodeCommand, SecretAddress};
+use crate::services::node_service::NodeCommand;
 use dioxus::prelude::*;
+use ethersync_shared::secret_address::SecretAddress;
 use std::string::ToString;
 
 #[component]
@@ -70,9 +71,9 @@ pub fn ConnectionForm() -> Element {
                 node_service.send(NodeCommand::ConnectByJoinCode { join_code });
             }
             "advanced" => {
-                match SecretAddress::from_string(
-                    form_data["peer_node_id"].as_value(),
-                    form_data["peer_passphrase"].as_value(),
+                match SecretAddress::from_str_parts(
+                    &form_data["peer_node_id"].as_value(),
+                    &form_data["peer_passphrase"].as_value(),
                 ) {
                     Ok(secret_address) => node_service.send(NodeCommand::ConnectByAddress {
                         secret_address: Box::new(secret_address),
